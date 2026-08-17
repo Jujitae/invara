@@ -1,0 +1,26 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  suite:
+    # Both, on purpose. Two of the four failure stories in the README are
+    # platform facts — a Windows cp949 console and a CRLF checkout breaking a
+    # sealed digest — and a verifier that only runs on Linux would not have
+    # found either.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install pytest
+      - run: pip install -e .
+      - run: pytest -q

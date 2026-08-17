@@ -5,9 +5,9 @@ The question, and only this question:
     Given a task, the constraints it had to respect, and the state of the
     repository afterwards, did the work actually happen?
 
-Everything about the shape of this comes from
-:mod:`wie.divergence`, one subject over. That package seals a contract before
-the evidence exists, refuses to create anything it cannot kill, scores only
+The shape comes from a sibling engine in the repository this was built in,
+which tests claims about the world. That engine seals a contract before the
+evidence exists, refuses to create anything it cannot kill, scores only
 observed records, blocks self-reference at construction, and chains the
 result. Change "world claim" to "agent's work" and the same machine applies:
 
@@ -24,19 +24,18 @@ hash chain                   tamper-evident verdict history
 **The agent's own report is not an input.** There is no field in a contract
 where anything can assert that the work is finished; the verdict is computed
 from command exit codes and file digests. That is structural rather than
-policed, which is the only way it stays true — vault SRC-WIE-003 §15 lists
-"treat agent self-report as evidence" among the things not to do, and the
-cheapest place to obey it is to leave out the field.
+policed, which is the only way it stays true: the cheapest way to obey
+"never treat an agent's self-report as evidence" is to leave out the field
+that would carry it.
 
 **The kill path was written first.** ``BLOCK`` and ``UNVERIFIABLE`` work
 before ``PASS`` does, for the same reason the Divergence Engine's killer was
 built before its generator: a verifier that can only approve is a rubber
 stamp, and it is easier to notice a missing approval than a false one.
 
-**Boundary.** Verdicts live in ``.runtime/verify.db``. This package does not
-write ``wie-interpretation.db``, ``analytics.db`` or ``divergence.db``, and
-has its own entry point so that a syntax error here is not on the path of the
-command someone types on 2026-08-27.
+**Boundary.** Verdicts live in ``.runtime/verify.db`` and nowhere else. This
+package writes no other store, and it keeps its own entry point so that a
+syntax error here cannot take down an unrelated command in the same install.
 """
 
 from __future__ import annotations

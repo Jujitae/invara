@@ -42,7 +42,7 @@ def digest_paths(paths: Iterable[str], root: Path) -> dict[str, str]:
     """sha256 per path, for the paths that exist.
 
     A path that is absent is simply missing from the result, and
-    :func:`~wie.verify.contract.seal` refuses a constraint whose paths have no
+    :func:`~invara.contract.seal` refuses a constraint whose paths have no
     baseline. Absence is never recorded as a digest of nothing.
     """
 

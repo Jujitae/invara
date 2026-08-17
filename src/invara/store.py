@@ -1,6 +1,6 @@
 """Sealed contracts and their verdicts, in their own database.
 
-``.runtime/verify.db``. Append-only, hash-chained through :mod:`wie.chain`
+``.runtime/verify.db``. Append-only, hash-chained through :mod:`invara.chain`
 rather than a sixth private copy of that rule.
 
 Two tables and the reason they are two: a contract is written once, before

@@ -1,15 +1,14 @@
-"""``python -m wie.verify`` — seal a task, judge it, read the history.
+"""``invara`` — seal a task, judge it, read the history.
 
-Its own entry point, for the same reason :mod:`wie.divergence` has one: the
-``wie`` command is what a human types on 2026-08-27, and nothing built during
-the freeze goes on that path.
+Its own entry point, deliberately: a verifier that shares a command with the
+thing it verifies can be broken by the thing it verifies.
 
-    verify seal   <task.json>   seal the contract; refuses if it cannot fail
-    verify judge  <task_id>     run the checks and record what happened
-    verify list                 sealed tasks and their latest verdict
-    verify log    <task_id>     every verdict this task has had
-    verify show   <task_id>     the sealed contract, as sealed
-    verify chain                rebuild both hash chains
+    invara seal   <task.json>   seal the contract; refuses if it cannot fail
+    invara judge  <task_id>     run the checks and record what happened
+    invara list                 sealed tasks and their latest verdict
+    invara log    <task_id>     every verdict this task has had
+    invara show   <task_id>     the sealed contract, as sealed
+    invara chain                rebuild both hash chains
 """
 
 from __future__ import annotations

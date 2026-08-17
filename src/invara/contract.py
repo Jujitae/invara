@@ -62,10 +62,10 @@ class NotVerifiable(ValueError):
 class Constraint:
     """Something that has to still be true afterwards.
 
-    One kind for now — ``paths_unchanged`` — because it is the one this
-    repository already checks by hand every session: the 2026-08-27
-    resolution path must come out of every piece of work byte-identical.
-    Sealing the digests turns that habit into a contract.
+    One kind for now — ``paths_unchanged`` — because it is the one that was
+    already being checked by hand every session: a set of files that must come
+    out of every piece of work byte-identical. Sealing the digests turns that
+    habit into a contract.
     """
 
     kind: str

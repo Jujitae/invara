@@ -13,13 +13,13 @@ That is exactly the shape of the defect this project keeps paying for, and
     Two copies of a hashing rule that drift apart do not report a
     disagreement — they report the whole ledger as corrupt.
 
-So this module exists, and it is **additive**. The five live ledgers are not
-migrated here: they sit under an architecture freeze until the evidence loop
-closes on 2026-08-27, and re-hashing a live chain is not a refactor, it is a
-rewrite of history. They move one at a time, afterwards, each with its own
-verification that the head hash is unchanged.
+So this module exists, and it was written **additively**. In the repository
+it came from, five ledgers already had their own copy of the rule and none
+was migrated to this one: re-hashing a live chain is not a refactor, it is a
+rewrite of history, and each has to move separately with its own proof that
+the head hash did not change.
 
-What this prevents in the meantime is a sixth copy. New stores use this.
+What an additive extraction prevents in the meantime is a sixth copy.
 
 The rule, so it is written down once:
 
@@ -142,16 +142,18 @@ def append(
 
 
 def existing_implementations() -> tuple[str, ...]:
-    """The copies this module was extracted from, for the migration after 08-27.
+    """Other copies of this rule that still exist and have not been migrated.
 
-    Kept as data rather than prose so the eventual cleanup has a checklist and
-    a test can assert the list has not silently grown.
+    Empty here. In the repository INVARA was extracted from, five engines
+    carried their own hash-chain implementation and this module was pulled out
+    additively rather than migrating live ledgers under a freeze; the list
+    lived here so the eventual cleanup had a checklist and a test could assert
+    it had not silently grown. Those names describe that repository, not this
+    package, so they do not travel.
+
+    The mechanism is kept because the reason is general: a rule with more than
+    one implementation is a rule with a second opinion, and the cheapest way
+    to stop that is to make the duplicates enumerable.
     """
 
-    return (
-        "wie.analytics.lead_time._mention_hash",
-        "wie.analytics.backtest._chain_hash",
-        "wie.analytics.tombstone._tombstone_hash",
-        "wie.divergence.store._chain_hash",
-        "wie.interpretation._head_hash",
-    )
+    return ()
