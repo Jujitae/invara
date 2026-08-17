@@ -1,0 +1,7 @@
+# A checkout must not change bytes. This tool's verdicts are file digests, and
+# one of the failure stories in the README is a sealed file whose SHA-256
+# broke because a fresh clone rewrote it to CRLF. Shipping a verifier that
+# can be defeated by `git clone` on Windows is not an option.
+* text=auto eol=lf
+*.png binary
+*.whl binary
