@@ -1,0 +1,244 @@
+# INVARA
+
+**Engineering invariants for AI-built software.**
+
+> **INVARA upgrades vibe-coded software into verifiable, engineering-grade
+> software.**
+
+You asked an agent to do a piece of work. It says it is done. INVARA decides
+that independently, from exit codes and file bytes, and writes the verdict into
+a hash chain so the answer cannot be quietly revised later.
+
+**The agent's own report is not an input.** There is no field in a contract
+where anything can assert that the work is finished.
+
+```text
+Founder intent
+    ↓
+Sealed specification and constraints
+    ↓
+Builder agent (Claude Code / Codex / another agent)
+    ↓
+Code, files, database changes, commands, runtime effects
+    ↓
+Independent INVARA verifier
+    ↓
+Observable evidence and provenance
+    ↓
+BLOCK / UNVERIFIABLE / HUMAN_REVIEW / PASS
+    ↓
+Human or policy-controlled authority
+```
+
+Status: **v0.1 / Alpha.** It is dogfooded daily and has not been sold. It is
+not autonomous authorization and not an enterprise compliance control.
+
+---
+
+## What this is not
+
+Read this part before the install line. It is short on purpose, and the word
+that carries the promise above is *verifiable* — not *correct*.
+
+> **INVARA does not prove software correctness.**
+> **It verifies declared constraints against observable evidence.**
+
+Specifically:
+
+- **It does not inspect your codebase.** It never asks whether the code is
+  good, whether the architecture holds, or whether the tests are the right
+  tests. Stack a new floor on junk and, if this floor was built to the
+  declared spec, the verdict is `PASS`.
+- **It does not find bugs.** A completion check that runs your suite is only as
+  strong as your suite. INVARA reports the exit code; it does not have an
+  opinion about coverage.
+- **It does not decide what should have been promised.** You write the
+  contract. A weak contract earns a weak `PASS`, and the contract is stored
+  verbatim so anyone can see how weak it was.
+- **It is not a sandbox.** Completion checks are commands and they run with
+  your permissions. Do not seal a contract you have not read.
+- **It does not judge intent.** `intent` is prose; nothing checks that the
+  work matched it. The checks are what bind.
+- **It is not an AI code generator and not an LLM code-review bot.** There is
+  no model anywhere in the verdict path.
+
+The narrow claim, which is what the machine actually does:
+
+> **It decides, independently, whether this change kept the promises it made.**
+
+---
+
+## Install and first verdict, in five minutes
+
+Nothing to configure. No API key, no service, no account. Python 3.12+.
+
+```bash
+uvx --from git+https://github.com/Jujitae/invara invara list
+```
+
+or, to keep it:
+
+```bash
+pip install "invara @ git+https://github.com/Jujitae/invara"
+```
+
+The package declares **zero runtime dependencies**, so this pulls only the
+standard library. From a checkout, `python -m invara` is the same program.
+
+### 1. Write the contract *before* the work
+
+`task.json`, next to the repository you are about to change:
+
+```json
+{
+  "task_id": "2026-08-17-tidy-the-parser",
+  "intent": "Speed up the CSV parser without changing what it accepts",
+  "constraints": [
+    {
+      "kind": "paths_unchanged",
+      "paths": ["tests/test_parser.py"],
+      "reason": "a speedup that edits its own test is not a speedup"
+    }
+  ],
+  "done_when": [
+    {
+      "id": "suite",
+      "command": ["python", "-m", "pytest", "-q"],
+      "expect_exit": 0,
+      "reason": "the whole suite"
+    }
+  ]
+}
+```
+
+```bash
+invara seal task.json
+```
+
+Sealing takes the digests of the protected paths **now**, before anyone knows
+what the verdict will be. That ordering is the entire guarantee.
+
+### 2. Do the work.
+
+### 3. Judge
+
+```bash
+invara judge 2026-08-17-tidy-the-parser            # dry run
+invara judge 2026-08-17-tidy-the-parser --commit   # record it
+```
+
+```
+  BLOCK: 1 protected path(s) changed: tests/test_parser.py: changed
+         (a speedup that edits its own test is not a speedup)
+```
+
+That is the first verdict. Everything below is detail.
+
+---
+
+## The four verdicts
+
+| Verdict | Meaning | Exit |
+|---|---|---|
+| `BLOCK` | A protected path changed, or a completion check failed | 1 |
+| `UNVERIFIABLE` | A check could not be run at all. **Unchecked is not passed** | 2 |
+| `HUMAN_REVIEW` | Machine checks passed; something was declared as needing eyes | 0 |
+| `PASS` | Every check returned what it promised, every protected path is byte-identical | 0 |
+
+Constraint breaks outrank everything. A run that touched what it promised not
+to touch is not partially fine.
+
+## Sealing refuses more than it accepts
+
+`seal` will not write a contract that cannot fail the work. It refuses a task
+with no completion condition, a condition with no command to check it, a
+contract with no protected paths ("a task allowed to change anything cannot be
+said to have respected anything"), a duplicate check id, a protected path that
+does not exist, and — the one that matters most — a contract where **every**
+condition defers to a person.
+
+That last one is why this is not a rubber stamp: if the only evidence is
+somebody saying yes, there is no contract.
+
+## Other commands
+
+```
+invara list             sealed tasks and their latest verdict
+invara log   <task_id>  every verdict this task has ever had
+invara show  <task_id>  the contract, exactly as sealed
+invara chain            rebuild both hash chains
+```
+
+Verdicts live in `.runtime/verify.db` (`--db` to move it). A contract is sealed
+once and judged many times; the history is append-only and chained.
+
+---
+
+## Determinism
+
+Same repository state, same contract, same environment → same verdict. The
+verdict is a function of file digests and command exit codes, and nothing else;
+there is no model in the path and no clock in the decision.
+
+Measured rather than asserted, 2026-08-17: contract
+`2026-08-17-route-discovery` was judged twice, four minutes apart, against an
+unchanged tree — 7 checks each including a 2,021-test suite. Both runs returned
+the same status and the same reason string, and both rows are in the chain:
+
+```
+$ invara log 2026-08-17-route-discovery
+2026-08-17 09:17 UTC  PASS
+    7 check(s) passed and 6 protected path(s) are unchanged
+2026-08-17 09:21 UTC  PASS
+    7 check(s) passed and 6 protected path(s) are unchanged
+```
+
+Run that yourself on your own contract before you trust it on ours.
+
+The word doing work there is **environment**. See the first failure story
+below: a contract that passed locally and failed in CI was not
+non-deterministic — it was two different environments, and INVARA reported
+each one correctly. If you want the verdict to be reproducible, make the
+completion commands reproducible.
+
+---
+
+## Failure stories
+
+These are real, from building and using this tool. They are here because a
+verification tool that only shows its successes is asking to be trusted on
+exactly the grounds it tells you not to trust anything.
+
+**Environment contamination.** A contract passed on the machine that wrote it
+and failed in CI. The tree was clean; the *environment* was not.
+`PYTHONIOENCODING` was set in the shell, child processes inherited it, and the
+completion command only worked because of it. Verification runs now use
+`env -u PYTHONIOENCODING`. Clean tree is not clean environment.
+
+**A seal that broke itself.** A fresh clone rewrote a sealed ontology file to
+CRLF on checkout, so its SHA-256 no longer matched. The file whose entire job
+was to prove nothing had changed failed its own seal. Fixed in
+`.gitattributes`, not in the digest rule — the digest was right.
+
+**The first verdict was `UNVERIFIABLE`, and it was correct.** A completion
+command could not be found, because `subprocess` does not use `cwd` to resolve
+the executable. The verdict was right and the tool was useless. Both facts are
+recorded; only one of them was a bug.
+
+**It did not pass the work that built it.** The first contract INVARA ever
+sealed was the task of building it. It returned `UNVERIFIABLE`, then
+`PASS`, then `PASS`. All three are still in `.runtime/verify.db`, and
+`invara log` prints them.
+
+---
+
+## Where it came from
+
+The shape is lifted from a sibling engine in the same private repository:
+seal the contract
+before the evidence exists, refuse to create anything you cannot kill, score
+only observed records, and chain the result. Change "world claim" to "agent's
+work" and the same machine applies.
+
+INVARA was built and is dogfooded inside a private working repository (WIE);
+see [`PROVENANCE.md`](PROVENANCE.md) for what that means for this source.

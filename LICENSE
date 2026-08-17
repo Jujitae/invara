@@ -1,0 +1,23 @@
+LICENSE NOT YET CHOSEN — THIS REPOSITORY IS NOT PUBLISHABLE IN THIS STATE.
+
+No licence has been granted. All rights reserved.
+
+Choosing the licence is a Founder decision and it is the one thing blocking
+publication. It is close to irreversible: the version published under a
+licence stays available under it forever, and relicensing later needs every
+contributor's consent.
+
+The choice interacts directly with the stated business model (an open local
+core, with a hosted evidence service as the paid layer):
+
+  Apache-2.0  maximum adoption, explicit patent grant. Anyone, including a
+              cloud vendor, may host the paid layer we intend to sell.
+  AGPL-3.0    a competitor who hosts it must publish their modifications.
+              Protects the hosted business. Some companies forbid AGPL
+              dependencies outright, which costs adoption.
+  BSL 1.1     source-available, converts to an open licence after a set term,
+              forbids competing hosted services in the meantime. Not OSI-
+              approved, so it cannot be called open source.
+
+Replace this file with the chosen licence text before making the repository
+public.

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "invara"
+version = "0.1.0"
+description = "Independent verification that a change kept the constraints it declared"
+requires-python = ">=3.12"
+# Zero runtime dependencies, deliberately and permanently. It is what makes
+# `uvx --from git+... invara` honest, and it is also the claim: nothing in the
+# verdict path can be a model, a service or a network call.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+invara = "invara.__main__:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
