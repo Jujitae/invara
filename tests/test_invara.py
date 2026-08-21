@@ -7,6 +7,7 @@ four ways a task is refused or blocked, and PASS is the short part at the end.
 
 from __future__ import annotations
 
+import ast
 import dataclasses
 import io
 import json
@@ -685,6 +686,45 @@ class TheCommandLine(Sandbox):
         logged = self._output("log", "T-cli").splitlines()[0]
         self.assertNotIn("[", logged)
         self.assertEqual(logged, f"{_stamp(T0)}  {PASS}")
+
+    def test_nothing_it_prints_needs_a_character_the_console_may_lack(self) -> None:
+        """The safety net is for the operator's text, not for our own dashes.
+
+        ``_survive_the_console`` turns unencodable characters into '?' so the
+        CLI cannot die while reporting. That is for intent lines and check
+        output, which belong to whoever wrote the contract. This module's own
+        literals have no such excuse, and an em-dash in the dry-run line is
+        printed inside the five-minute first verdict the README sells.
+        """
+
+        tree = ast.parse((PACKAGE / "__main__.py").read_text(encoding="utf-8"))
+        offenders = [
+            (piece.lineno, piece.value)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "print"
+            for piece in ast.walk(node)
+            if isinstance(piece, ast.Constant)
+            and isinstance(piece.value, str)
+            and not piece.value.isascii()
+        ]
+        self.assertEqual(offenders, [])
+
+    def test_a_dry_run_reads_correctly_on_a_cp949_console(self) -> None:
+        """The console that produced failure story four."""
+
+        main(self._args("seal", str(self._task_file())))
+        stream = io.TextIOWrapper(
+            io.BytesIO(), encoding="cp949", errors="strict", write_through=True
+        )
+        saved = sys.stdout
+        sys.stdout = stream
+        try:
+            main(self._args("judge", "T-cli"))
+        finally:
+            sys.stdout = saved
+        printed = stream.buffer.getvalue().decode("cp949")
+        self.assertIn("(dry run; pass --commit to record)", printed)
+        self.assertNotIn("?", printed)
 
     def test_judging_without_commit_records_nothing(self) -> None:
         main(self._args("seal", str(self._task_file())))

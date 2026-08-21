@@ -163,7 +163,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
         )
         print("  recorded")
     else:
-        print("  (dry run — pass --commit to record)")
+        print("  (dry run; pass --commit to record)")
 
     if verdict.status == BLOCK:
         return EXIT_BLOCK
@@ -276,6 +276,12 @@ def _survive_the_console() -> None:
     encoding it has, so Korean still reads correctly where it can, and the
     handful of characters it cannot represent become '?' instead of an
     exception.
+
+    This net is for the operator's own text — intent lines, check output, path
+    names — which INVARA does not get to choose. It is not licence for INVARA
+    to print characters it did not need. An em-dash in the dry-run line came
+    out as '?' on a cp949 console, and that line is part of the first verdict
+    a new user ever sees. A test holds this module's own literals to ASCII.
     """
 
     for stream in (sys.stdout, sys.stderr):
