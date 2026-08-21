@@ -168,7 +168,13 @@ def judge(
     current: dict[str, dict[str, str]],
     observations: Sequence[Observation],
 ) -> Verdict:
-    """Turn observations into a verdict, kill path first."""
+    """Turn observations into a verdict, kill path first.
+
+    Five exits, and each one names itself. ``decided_by`` is the name of the
+    evidence field that carried the decision, so the ladder below is readable
+    from the verdict alone instead of having to be reconstructed by a reader
+    who would then own a second copy of it.
+    """
 
     breaks: list[str] = []
     for index, constraint in enumerate(contract.constraints):
@@ -218,12 +224,14 @@ def judge(
         return Verdict(
             BLOCK,
             f"{len(breaks)} protected path(s) changed: " + "; ".join(breaks[:3]),
+            decided_by="constraint_breaks",
             **common,
         )
     if failed:
         return Verdict(
             BLOCK,
             f"{len(failed)} completion check(s) failed: " + "; ".join(failed[:3]),
+            decided_by="failed",
             **common,
         )
     if unrunnable:
@@ -231,6 +239,7 @@ def judge(
             UNVERIFIABLE,
             f"{len(unrunnable)} check(s) could not be run, so the work is "
             "unverified rather than accepted: " + "; ".join(unrunnable[:3]),
+            decided_by="unrunnable",
             **common,
         )
     if needs_human:
@@ -238,6 +247,7 @@ def judge(
             HUMAN_REVIEW,
             f"machine checks passed; {len(needs_human)} item(s) need a person: "
             + "; ".join(needs_human[:3]),
+            decided_by="needs_human",
             **common,
         )
     return Verdict(
@@ -245,5 +255,6 @@ def judge(
         f"{len(passed)} check(s) passed and "
         f"{sum(len(c.paths) for c in contract.constraints)} protected path(s) "
         "are unchanged",
+        decided_by="passed",
         **common,
     )

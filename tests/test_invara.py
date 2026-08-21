@@ -7,6 +7,7 @@ four ways a task is refused or blocked, and PASS is the short part at the end.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import re
@@ -23,6 +24,7 @@ from invara.__main__ import (
     EXIT_OK,
     EXIT_REFUSED,
     EXIT_UNVERIFIABLE,
+    _stamp,
     main,
 )
 from invara.contract import (
@@ -33,6 +35,7 @@ from invara.contract import (
     Constraint,
     NotVerifiable,
     Predicate,
+    Verdict,
     seal,
 )
 from invara.runner import (
@@ -348,6 +351,111 @@ class ThePassPath(Sandbox):
         self.assertEqual(verdict.status, BLOCK)
 
 
+class EveryVerdictNamesItsDecider(Sandbox):
+    """A verdict that cannot say what decided it is one nobody can argue with.
+
+    ``status`` was never enough. :func:`judge` has five exits and there are
+    four statuses, so ``BLOCK`` is two different accusations sharing a word —
+    a promise that was broken, and a check that came back wrong. Recovering
+    which one from the evidence tuples means every reader keeps a second copy
+    of the resolution order, and two copies of a rule do not report a
+    disagreement; they report the whole ledger as corrupt.
+
+    So ``decided_by`` names the evidence field that carried the decision, and
+    these hold it to that rather than to a string somebody liked.
+    """
+
+    def _five(self) -> dict[str, "Verdict"]:
+        """One verdict from each exit of the ladder, cheapest first."""
+
+        out = {}
+        for name, predicates, touch in (
+            ("passed", (Predicate("suite", tuple(OK)),), False),
+            ("failed", (Predicate("suite", tuple(BAD)),), False),
+            ("unrunnable", (Predicate("suite", tuple(MISSING)),), False),
+            (
+                "needs_human",
+                (
+                    Predicate("suite", tuple(OK)),
+                    Predicate("eyes", tuple(OK), human=True, reason="look"),
+                ),
+                False,
+            ),
+            ("constraint_breaks", (Predicate("suite", tuple(OK)),), True),
+        ):
+            contract = contract_over(self.root, *predicates)
+            if touch:
+                (self.root / "guarded.txt").write_text("touched", encoding="utf-8")
+            out[name] = judge(contract, *observe(contract, self.root))
+            (self.root / "guarded.txt").write_text("do not touch", encoding="utf-8")
+        return out
+
+    def test_a_verdict_cannot_be_built_without_one(self) -> None:
+        """No default. The field is not optional in the sense that matters."""
+
+        with self.assertRaises(TypeError):
+            Verdict(PASS, "everything was fine")  # type: ignore[call-arg]
+
+    def test_every_exit_in_the_runner_fills_it(self) -> None:
+        """Counted in the source, so a sixth exit cannot be added silently.
+
+        The dataclass stops a verdict with *no* decider. Only this stops a
+        future branch from being written with a decider copied off its
+        neighbour, which is the same failure one step later.
+        """
+
+        source = (PACKAGE / "runner.py").read_text(encoding="utf-8")
+        self.assertEqual(source.count("Verdict("), source.count("decided_by="))
+        self.assertEqual(source.count("Verdict("), 5)
+
+    def test_it_names_a_field_that_actually_exists(self) -> None:
+        names = {f.name for f in dataclasses.fields(Verdict)}
+        for expected, verdict in self._five().items():
+            self.assertIn(verdict.decided_by, names)
+            self.assertEqual(verdict.decided_by, expected)
+
+    def test_the_named_field_is_the_one_holding_the_evidence(self) -> None:
+        """The point of the whole field: it says where to go and argue."""
+
+        for expected, verdict in self._five().items():
+            self.assertTrue(
+                getattr(verdict, verdict.decided_by),
+                f"{verdict.status} says {verdict.decided_by} decided it, "
+                f"and that field is empty",
+            )
+
+    def test_the_five_exits_do_not_share_a_decider(self) -> None:
+        five = self._five()
+        self.assertEqual(len(five), 5)
+        self.assertEqual(len({v.decided_by for v in five.values()}), 5)
+
+    def test_block_says_which_of_its_two_rules_decided(self) -> None:
+        """The case ``status`` cannot express, and the reason this exists."""
+
+        five = self._five()
+        broke, fell = five["constraint_breaks"], five["failed"]
+        self.assertEqual(broke.status, BLOCK)
+        self.assertEqual(fell.status, BLOCK)
+        self.assertNotEqual(broke.decided_by, fell.decided_by)
+
+    def test_it_reaches_the_ledger_and_the_chain_still_verifies(self) -> None:
+        connection = store.connect(self.root / "verify.db")
+        try:
+            contract = contract_over(self.root, Predicate("suite", tuple(BAD)))
+            verdict = judge(contract, *observe(contract, self.root))
+            store.record_contract(connection, contract)
+            store.record_verdict(
+                connection, contract.task_id, verdict, [], observed_at=T0
+            )
+            row = store.history(connection, contract.task_id)[0]
+            self.assertEqual(
+                json.loads(row["detail_json"])["decided_by"], "failed"
+            )
+            self.assertTrue(store.verify(connection)["ok"])
+        finally:
+            connection.close()
+
+
 class NoSelfReport(unittest.TestCase):
     """There is nowhere to say "done". Checked as a property of the schema."""
 
@@ -482,6 +590,101 @@ class TheCommandLine(Sandbox):
         finally:
             sys.stdout = saved
         self.assertEqual(code, EXIT_OK)
+
+    def _output(self, *rest: str) -> str:
+        stream = io.StringIO()
+        saved = sys.stdout
+        sys.stdout = stream
+        try:
+            main(self._args(*rest))
+        finally:
+            sys.stdout = saved
+        return stream.getvalue()
+
+    def test_judge_says_what_decided(self) -> None:
+        main(self._args("seal", str(self._task_file())))
+        self.assertIn("decided by: passed", self._output("judge", "T-cli"))
+
+    def test_the_two_blocks_do_not_read_the_same(self) -> None:
+        """The reason the field exists, seen from a terminal.
+
+        Both of these are ``BLOCK`` and they are not the same accusation. If
+        the two lines are indistinguishable the field is recorded and useless.
+        """
+
+        main(self._args("seal", str(self._task_file(task_id="T-broke"))))
+        main(
+            self._args(
+                "seal",
+                str(
+                    self._task_file(
+                        task_id="T-fell",
+                        done_when=[{"id": "suite", "command": BAD}],
+                    )
+                ),
+            )
+        )
+        (self.root / "guarded.txt").write_text("touched", encoding="utf-8")
+        broke = self._output("judge", "T-broke", "--commit")
+        (self.root / "guarded.txt").write_text("do not touch", encoding="utf-8")
+        fell = self._output("judge", "T-fell", "--commit")
+
+        self.assertIn(BLOCK, broke)
+        self.assertIn(BLOCK, fell)
+        self.assertIn("decided by: constraint_breaks", broke)
+        self.assertIn("decided by: failed", fell)
+
+        self.assertIn("[constraint_breaks]", self._output("log", "T-broke"))
+        self.assertIn("[failed]", self._output("log", "T-fell"))
+
+    def test_list_still_fits_a_narrow_terminal(self) -> None:
+        """Its columns were sized to land under 80. Keep them there."""
+
+        main(self._args("seal", str(self._task_file())))
+        main(self._args("judge", "T-cli", "--commit"))
+        for line in self._output("list").splitlines():
+            self.assertLessEqual(len(line), 80, line)
+
+    def test_a_verdict_from_before_the_field_prints_as_it_always_did(self) -> None:
+        """Every verdict in a live ledger predates this field.
+
+        Re-deriving one in the printer would put a second copy of the
+        resolution order there, and guessing would let a verdict acquire a
+        decider it never had. So an old row is left alone, byte for byte.
+        """
+
+        main(self._args("seal", str(self._task_file())))
+        connection = store.connect(self.root / "v.db")
+        detail = {
+            "status": PASS,
+            "reason": "1 check(s) passed and 1 protected path(s) are unchanged",
+            "constraint_breaks": [],
+            "failed": [],
+            "unrunnable": [],
+            "passed": ["suite"],
+            "needs_human": [],
+        }
+        try:
+            chain.append(
+                connection,
+                "verdict",
+                {
+                    "task_id": "T-cli",
+                    "status": PASS,
+                    "reason": detail["reason"],
+                    "detail_json": chain.canonical_json(detail),
+                    "observations_json": chain.canonical_json({"items": []}),
+                    "observed_at": T0,
+                },
+                store._verdict_payload,
+            )
+            self.assertTrue(store.verify(connection)["ok"])
+        finally:
+            connection.close()
+
+        logged = self._output("log", "T-cli").splitlines()[0]
+        self.assertNotIn("[", logged)
+        self.assertEqual(logged, f"{_stamp(T0)}  {PASS}")
 
     def test_judging_without_commit_records_nothing(self) -> None:
         main(self._args("seal", str(self._task_file())))

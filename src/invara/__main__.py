@@ -49,6 +49,23 @@ def _stamp(epoch: float) -> str:
     )
 
 
+def _decider(detail_json: str | None) -> str:
+    """The rule that decided a stored verdict, bracketed — or nothing at all.
+
+    Every verdict in a ledger older than this field has no decider to show,
+    and it does not get one fitted here. Deriving one would put a second copy
+    of the resolution order in the printer, and two copies of a rule do not
+    report a disagreement; they report the whole ledger as corrupt. An older
+    row says less because less is what it has, and it prints exactly as it
+    always did.
+    """
+
+    if not detail_json:
+        return ""
+    name = json.loads(detail_json).get("decided_by")
+    return f"  [{name}]" if name else ""
+
+
 def cmd_seal(args: argparse.Namespace) -> int:
     """Seal a contract from a task file.
 
@@ -134,6 +151,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
         print(f"  {mark}{observation.predicate_id:<28} {observation.detail[:80]}")
     print()
     print(f"  {verdict.status}: {verdict.reason}")
+    print(f"  decided by: {verdict.decided_by}")
 
     if args.commit:
         store.record_verdict(
@@ -174,7 +192,8 @@ def cmd_log(args: argparse.Namespace) -> int:
         print(f"{args.task_id} has never been judged")
         return EXIT_OK
     for row in rows:
-        print(f"{_stamp(row['observed_at'])}  {row['status']}")
+        decided = _decider(row["detail_json"])
+        print(f"{_stamp(row['observed_at'])}  {row['status']}{decided}")
         print(f"    {row['reason']}")
     return EXIT_OK
 

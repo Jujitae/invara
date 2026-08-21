@@ -174,6 +174,22 @@ class VerificationContract:
 class Verdict:
     status: str
     reason: str
+    #: Which of the evidence fields below carried this decision, named exactly
+    #: as that field is named here.
+    #:
+    #: ``status`` cannot carry it and never could: :func:`~invara.runner.judge`
+    #: has five exits and there are four statuses, so ``BLOCK`` is two rules
+    #: wearing one word — a promise that was broken and a check that failed are
+    #: not the same accusation and should not read as one. Recovering which
+    #: happened by re-testing the tuples means writing the resolution order
+    #: down a second time, at every reader, which is the drift
+    #: :mod:`invara.chain` exists to stop.
+    #:
+    #: Required, and deliberately with no default. A verdict that cannot say
+    #: what decided it is a verdict nobody can argue with, and this tool is
+    #: only worth having if its answers can be attacked at the point they were
+    #: made.
+    decided_by: str
     constraint_breaks: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
     unrunnable: tuple[str, ...] = ()
@@ -188,6 +204,7 @@ class Verdict:
         return {
             "status": self.status,
             "reason": self.reason,
+            "decided_by": self.decided_by,
             "constraint_breaks": list(self.constraint_breaks),
             "failed": list(self.failed),
             "unrunnable": list(self.unrunnable),

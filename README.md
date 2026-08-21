@@ -130,6 +130,7 @@ invara judge 2026-08-17-tidy-the-parser --commit   # record it
 ```
   BLOCK: 1 protected path(s) changed: tests/test_parser.py: changed
          (a speedup that edits its own test is not a speedup)
+  decided by: constraint_breaks
 ```
 
 That is the first verdict. Everything below is detail.
@@ -147,6 +148,13 @@ That is the first verdict. Everything below is detail.
 
 Constraint breaks outrank everything. A run that touched what it promised not
 to touch is not partially fine.
+
+`BLOCK` is two rules wearing one word — a protected path that changed and a
+check that came back wrong are not the same accusation. So the verdict also
+records which rule decided it, named after the evidence it decided on
+(`constraint_breaks`, `failed`, `unrunnable`, `needs_human`, `passed`), and
+`judge` and `log` print it. Verdicts recorded before this existed do not have
+one, and do not get one fitted after the fact.
 
 ## Sealing refuses more than it accepts
 
