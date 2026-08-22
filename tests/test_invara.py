@@ -19,6 +19,7 @@ import unittest
 from pathlib import Path
 
 from invara import chain
+from invara import mcp
 from invara import store
 from invara.__main__ import (
     EXIT_BLOCK,
@@ -734,6 +735,151 @@ class TheCommandLine(Sandbox):
             self.assertEqual(store.history(connection, "T-cli"), [])
         finally:
             connection.close()
+
+
+class TheEditorSurface(Sandbox):
+    """MCP over stdio, on the standard library alone.
+
+    The buyer cannot read code and will not open a terminal, so the surface
+    has to be where they already are. These hold the two things that make
+    that surface honest rather than merely present: it adds no dependency,
+    and it does not talk over its own transport.
+    """
+
+    def _rpc(self, *requests: dict) -> list[dict]:
+        out = io.StringIO()
+        mcp.serve(io.StringIO("\n".join(json.dumps(r) for r in requests)), out)
+        return [json.loads(line) for line in out.getvalue().splitlines() if line.strip()]
+
+    def _call(self, name: str, **arguments) -> tuple[dict, bool]:
+        arguments.setdefault("db", str(self.root / "v.db"))
+        arguments.setdefault("root", str(self.root))
+        result = self._rpc({
+            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": name, "arguments": arguments},
+        })[0]["result"]
+        return json.loads(result["content"][0]["text"]), result["isError"]
+
+    def test_it_adds_no_dependency(self) -> None:
+        """`dependencies = []` is a product promise, so it is a test.
+
+        Every MCP server reaches for an SDK. Reaching for one here would end
+        `uvx --from git+...` pulling only the standard library, which is the
+        claim the install line makes.
+        """
+
+        tree = ast.parse((PACKAGE / "mcp.py").read_text(encoding="utf-8"))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported |= {a.name.split(".")[0] for a in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module.split(".")[0])
+        self.assertEqual(sorted(imported - sys.stdlib_module_names), [])
+
+    def test_it_never_speaks_over_its_own_transport(self) -> None:
+        """stdout is the protocol. One stray line and the client sees a corpse.
+
+        A server that prints a warning to stdout does not look like a server
+        with a warning; it looks like a server that died, because the client
+        is parsing that stream as JSON-RPC.
+        """
+
+        tree = ast.parse((PACKAGE / "mcp.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "print":
+                streams = [k.value for k in node.keywords if k.arg == "file"]
+                self.assertTrue(
+                    streams and ast.unparse(streams[0]) == "sys.stderr",
+                    f"print() at line {node.lineno} is not directed at stderr",
+                )
+
+    def test_a_notification_is_not_answered(self) -> None:
+        """Replying to a notification is itself a protocol violation."""
+
+        answered = self._rpc(
+            {"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        )
+        self.assertEqual([m["id"] for m in answered], [1])
+
+    def test_initialize_answers_in_the_version_it_was_asked_in(self) -> None:
+        for asked, expected in (("2024-11-05", "2024-11-05"), ("1999-01-01", mcp.SUPPORTED[0])):
+            result = self._rpc({
+                "jsonrpc": "2.0", "id": 1, "method": "initialize",
+                "params": {"protocolVersion": asked},
+            })[0]["result"]
+            self.assertEqual(result["protocolVersion"], expected)
+            self.assertEqual(result["serverInfo"]["name"], "invara")
+
+    def test_every_tool_is_listed_with_a_schema(self) -> None:
+        tools = self._rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})[0]["result"]["tools"]
+        self.assertEqual(
+            sorted(t["name"] for t in tools),
+            ["invara_chain", "invara_judge", "invara_list", "invara_log", "invara_seal"],
+        )
+        for tool in tools:
+            self.assertEqual(tool["inputSchema"]["type"], "object")
+            self.assertTrue(tool["description"].strip())
+        self.assertEqual(sorted(mcp.HANDLERS), sorted(t["name"] for t in tools))
+
+    def test_judge_tells_the_agent_which_rule_decided(self) -> None:
+        """The verdict crosses the transport intact, decider and all."""
+
+        spec = self.root / "task.json"
+        spec.write_text(json.dumps({
+            "task_id": "T-mcp", "intent": "leave guarded.txt alone",
+            "constraints": [{"kind": "paths_unchanged", "paths": ["guarded.txt"],
+                             "reason": "frozen"}],
+            "done_when": [{"id": "suite", "command": OK}],
+        }), encoding="utf-8")
+
+        sealed, errored = self._call("invara_seal", task_file=str(spec))
+        self.assertFalse(errored)
+        self.assertEqual(sealed["sealed"], "T-mcp")
+
+        clean, errored = self._call("invara_judge", task_id="T-mcp", commit=True)
+        self.assertFalse(errored)
+        self.assertEqual((clean["status"], clean["decided_by"]), (PASS, "passed"))
+
+        (self.root / "guarded.txt").write_text("touched", encoding="utf-8")
+        broke, errored = self._call("invara_judge", task_id="T-mcp", commit=True)
+        self.assertEqual((broke["status"], broke["decided_by"]), (BLOCK, "constraint_breaks"))
+        self.assertFalse(broke["accepted"])
+        self.assertTrue(broke["evidence"]["constraint_breaks"])
+
+        logged, _ = self._call("invara_log", task_id="T-mcp")
+        self.assertEqual(
+            [(v["status"], v["decided_by"]) for v in logged["verdicts"]],
+            [(PASS, "passed"), (BLOCK, "constraint_breaks")],
+        )
+        chain_state, _ = self._call("invara_chain")
+        self.assertTrue(chain_state["ok"])
+
+    def test_a_refusal_arrives_as_content_not_as_a_dead_transport(self) -> None:
+        """`seal` refusing is the product working. The agent must be able to read it."""
+
+        spec = self.root / "task.json"
+        spec.write_text(json.dumps({
+            "task_id": "T-weak", "intent": "no way to fail this",
+            "constraints": [{"kind": "paths_unchanged", "paths": ["guarded.txt"],
+                             "reason": "frozen"}],
+            "done_when": [],
+        }), encoding="utf-8")
+        refusal, errored = self._call("invara_seal", task_file=str(spec))
+        self.assertTrue(errored)
+        self.assertEqual(refusal["refused"], "no_done_condition")
+
+        missing, errored = self._call("invara_judge", task_id="never-sealed")
+        self.assertTrue(errored)
+        self.assertEqual(missing["refused"], "no_such_task")
+
+    def test_unparseable_input_does_not_kill_the_server(self) -> None:
+        out = io.StringIO()
+        mcp.serve(io.StringIO('{not json\n{"jsonrpc":"2.0","id":7,"method":"ping"}'), out)
+        answered = [json.loads(line) for line in out.getvalue().splitlines()]
+        self.assertEqual(answered[0]["error"]["code"], -32700)
+        self.assertEqual(answered[1]["id"], 7)
 
 
 if __name__ == "__main__":

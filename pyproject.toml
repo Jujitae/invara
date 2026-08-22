@@ -28,6 +28,9 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 invara = "invara.__main__:main"
+# The editor surface. Same package, same zero dependencies; it speaks
+# MCP over stdio so the buyer never has to open a terminal.
+invara-mcp = "invara.mcp:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
