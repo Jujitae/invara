@@ -83,7 +83,16 @@ pip install "invara @ git+https://github.com/Jujitae/invara"
 ```
 
 The package declares **zero runtime dependencies**, so this pulls only the
-standard library. From a checkout, `python -m invara` is the same program.
+standard library.
+
+From a checkout it is the same program, but install it first — the source
+lives under `src/`, so a bare `python -m invara` in the repository root
+finds nothing to run:
+
+```bash
+pip install -e .
+python -m invara list
+```
 
 ### 1. Write the contract *before* the work
 
