@@ -1,20 +1,20 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.jujitae/invara",
+  "name": "io.github.Jujitae/invara",
   "title": "INVARA",
-  "description": "Independent verification that a change kept the constraints it declared. Seals a contract before the work, then judges from file digests and command exit codes. No model in the verdict path.",
+  "description": "Independent verification that a change kept its declared constraints. No model in the verdict path.",
   "websiteUrl": "https://migaryos.com/invara/",
   "repository": {
     "url": "https://github.com/Jujitae/invara",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "invara",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

@@ -1,4 +1,4 @@
-<!-- mcp-name: io.github.jujitae/invara -->
+<!-- mcp-name: io.github.Jujitae/invara -->
 # INVARA
 
 **Engineering invariants for AI-built software.**
