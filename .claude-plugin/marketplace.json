@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "invara",
+  "description": "INVARA - independent verification for AI-built software",
+  "owner": {
+    "name": "MIGARYOS"
+  },
+  "plugins": [
+    {
+      "name": "invara",
+      "description": "Verify that a change kept the constraints it declared. Verdicts come from file digests and exit codes, never from a model.",
+      "author": {
+        "name": "MIGARYOS"
+      },
+      "category": "security",
+      "source": "./plugin",
+      "homepage": "https://migaryos.com/invara/"
+    }
+  ]
+}

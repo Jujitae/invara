@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "invara": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "invara",
+        "invara-mcp"
+      ]
+    }
+  }
+}
