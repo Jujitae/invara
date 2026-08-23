@@ -228,8 +228,11 @@ checks that run are the ones a sealed contract already named, and there is
 still no field anywhere for an agent to assert that the work is done. An agent
 can ask for a verdict here. It cannot give one.
 
-The server is listed as `io.github.Jujitae/invara` in the
-[MCP registry][registry].
+`invara` there is a local label — call it what you like. The server's actual
+identity is `io.github.Jujitae/invara`, which is how it is listed in the
+[MCP registry][registry] and how a client that resolves through the registry
+will find it. It cannot be used as the key above: `claude mcp add` answers
+`Names can only contain letters, numbers, hyphens, and underscores`.
 
 [registry]: https://registry.modelcontextprotocol.io/v0/servers?search=invara
 
