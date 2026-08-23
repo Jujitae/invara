@@ -74,17 +74,18 @@ The narrow claim, which is what the machine actually does:
 Nothing to configure. No API key, no service, no account. Python 3.12+.
 
 ```bash
-uvx --from git+https://github.com/Jujitae/invara invara list
+uvx invara list
 ```
 
 or, to keep it:
 
 ```bash
-pip install "invara @ git+https://github.com/Jujitae/invara"
+pip install invara
 ```
 
 The package declares **zero runtime dependencies**, so this pulls only the
-standard library.
+standard library. `pip install invara` reports `Successfully installed
+invara-0.1.1` and `pip list` shows that one line and nothing else.
 
 From a checkout it is the same program, but install it first — the source
 lives under `src/`, so a bare `python -m invara` in the repository root
@@ -189,6 +190,53 @@ invara chain            rebuild both hash chains
 
 Verdicts live in `.runtime/verify.db` (`--db` to move it). A contract is sealed
 once and judged many times; the history is append-only and chained.
+
+---
+
+## Inside the editor
+
+The buyer this was built for does not open a terminal. So the same package
+ships an MCP server, and the agent already in the editor installs it:
+
+```bash
+claude mcp add invara -- uvx --from invara invara-mcp
+```
+
+which writes this, and any client that reads the same shape will do:
+
+```json
+{
+  "mcpServers": {
+    "invara": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "invara", "invara-mcp"]
+    }
+  }
+}
+```
+
+**`uvx invara-mcp` does not work**, and it is the obvious thing to try:
+`invara-mcp` is a command inside the `invara` package, not a package of its
+own, so uv answers `invara-mcp was not found in the package registry`. The
+`--from` is doing real work.
+
+Five tools — `invara_seal`, `invara_judge`, `invara_list`, `invara_log`,
+`invara_chain`. They are the commands above, and they change nothing about
+what a verdict is: it is still computed from file digests and exit codes, the
+checks that run are the ones a sealed contract already named, and there is
+still no field anywhere for an agent to assert that the work is done. An agent
+can ask for a verdict here. It cannot give one.
+
+The server is listed as `io.github.Jujitae/invara` in the
+[MCP registry][registry].
+
+[registry]: https://registry.modelcontextprotocol.io/v0/servers?search=invara
+
+Not a sandbox, and this does not make it one. `invara_seal` takes a task file,
+that file names commands, and judging runs them. An agent that can write a
+task file can cause those commands to run — which is no more than the shell it
+already has, but better said here than discovered.
 
 ---
 

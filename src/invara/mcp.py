@@ -53,7 +53,27 @@ __all__ = ["main", "serve"]
 #: otherwise the newest known one is offered and the client decides.
 SUPPORTED: tuple[str, ...] = ("2025-03-26", "2024-11-05")
 
-SERVER_INFO = {"name": "invara", "version": "0.1.0"}
+def _version() -> str:
+    """What this distribution actually is, rather than a number kept in step by hand.
+
+    It was hardcoded, and then the package went to 0.1.1 while this string
+    stayed 0.1.0 -- so every client that connected was told the wrong thing
+    about what it had just installed. The number lives in ``pyproject.toml``
+    and the installed metadata is that number, so it is read from there.
+
+    A checkout run through ``PYTHONPATH`` has no installed distribution. That
+    is not an error and it is also not a version, so it says neither.
+    """
+
+    try:
+        from importlib.metadata import version
+
+        return version("invara")
+    except Exception:  # noqa: BLE001 - a missing distribution is not a failure
+        return "0+unknown"
+
+
+SERVER_INFO = {"name": "invara", "version": _version()}
 
 _ROOT = {"type": "string", "description": "Repository root. Defaults to the working directory."}
 _DB = {"type": "string", "description": "Verdict database. Defaults to .runtime/verify.db."}

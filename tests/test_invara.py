@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import dataclasses
+import importlib.metadata
 import io
 import json
 import re
@@ -776,6 +777,25 @@ class TheEditorSurface(Sandbox):
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 imported.add(node.module.split(".")[0])
         self.assertEqual(sorted(imported - sys.stdlib_module_names), [])
+
+    def test_it_does_not_keep_its_own_version_by_hand(self) -> None:
+        """A version kept by hand drifts, and this one did.
+
+        The string here said 0.1.0 while PyPI served 0.1.1, so every client
+        that connected was told the wrong thing about what it had just
+        installed. The number belongs to ``pyproject.toml``; any copy of it
+        in this module is a second copy waiting to disagree.
+        """
+
+        source = (PACKAGE / "mcp.py").read_text(encoding="utf-8")
+        self.assertEqual(re.findall(r'"\d+\.\d+\.\d+"', source), [])
+
+    def test_the_version_it_reports_is_the_one_it_was_installed_as(self) -> None:
+        try:
+            installed = importlib.metadata.version("invara")
+        except importlib.metadata.PackageNotFoundError:
+            self.skipTest("no installed distribution here; nothing to compare against")
+        self.assertEqual(mcp.SERVER_INFO["version"], installed)
 
     def test_it_never_speaks_over_its_own_transport(self) -> None:
         """stdout is the protocol. One stray line and the client sees a corpse.
