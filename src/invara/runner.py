@@ -1,28 +1,31 @@
-"""Running the checks, and forming the verdict from what actually happened.
+"""Running the checks. This is the half that touches the world.
 
-Nothing here decides anything on its own. Every judgement comes from a
-contract that was sealed before the work was looked at, and every input is a
-file digest or an exit code. There is no path by which a claim becomes a
-verdict.
+Nothing here decides anything. Every judgement comes from a contract that was
+sealed before the work was looked at, and every input is a file digest or an
+exit code. There is no path by which a claim becomes a verdict.
+
+**This module is deliberately impure and the verdict is deliberately not in
+it.** ``subprocess`` and the filesystem live here; :mod:`invara.verdict` and
+:mod:`invara.contract` are held to importing neither, and a test enforces
+that. ``ADR-0016`` calls that line the seam the whole product rests on — the
+core has to mean the same thing under a CLI, an MCP server, a plugin, CI or a
+hosted API, and it can only do that if it never reaches for the world itself.
+Which side a name is on is the question this file's boundary answers.
+
+:class:`~invara.verdict.Observation` and :func:`~invara.verdict.judge` are
+re-exported here, because that is where every caller has always found them
+and moving a name is not the same as renaming it.
 """
 
 from __future__ import annotations
 
 import hashlib
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Iterable, Sequence
 
-from .contract import (
-    BLOCK,
-    HUMAN_REVIEW,
-    PASS,
-    UNVERIFIABLE,
-    Predicate,
-    VerificationContract,
-    Verdict,
-)
+from .contract import Predicate, VerificationContract
+from .verdict import Observation, judge
 
 __all__ = [
     "Observation",
@@ -52,24 +55,6 @@ def digest_paths(paths: Iterable[str], root: Path) -> dict[str, str]:
         if target.is_file():
             out[name] = hashlib.sha256(target.read_bytes()).hexdigest()
     return out
-
-
-@dataclass(frozen=True)
-class Observation:
-    """What one predicate did. Raw, before any judgement."""
-
-    predicate_id: str
-    exit_code: int | None
-    ran: bool
-    detail: str
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "predicate_id": self.predicate_id,
-            "exit_code": self.exit_code,
-            "ran": self.ran,
-            "detail": self.detail[:500],
-        }
 
 
 def resolve_program(command: Sequence[str], root: Path) -> list[str]:
@@ -161,100 +146,3 @@ def observe(
         run_predicate(predicate, root, timeout_s) for predicate in contract.done_when
     ]
     return current, observations
-
-
-def judge(
-    contract: VerificationContract,
-    current: dict[str, dict[str, str]],
-    observations: Sequence[Observation],
-) -> Verdict:
-    """Turn observations into a verdict, kill path first.
-
-    Five exits, and each one names itself. ``decided_by`` is the name of the
-    evidence field that carried the decision, so the ladder below is readable
-    from the verdict alone instead of having to be reconstructed by a reader
-    who would then own a second copy of it.
-    """
-
-    breaks: list[str] = []
-    for index, constraint in enumerate(contract.constraints):
-        now = current.get(str(index), {})
-        for path, sealed_digest in constraint.baseline.items():
-            actual = now.get(path)
-            if actual is None:
-                breaks.append(f"{path}: gone ({constraint.reason})")
-            elif actual != sealed_digest:
-                breaks.append(f"{path}: changed ({constraint.reason})")
-
-    by_id = {observation.predicate_id: observation for observation in observations}
-    failed: list[str] = []
-    unrunnable: list[str] = []
-    passed: list[str] = []
-    needs_human: list[str] = []
-
-    for predicate in contract.done_when:
-        observation = by_id.get(predicate.id)
-        if observation is None:
-            unrunnable.append(f"{predicate.id}: never run")
-            continue
-        if predicate.human:
-            needs_human.append(f"{predicate.id}: {predicate.reason or 'review'}")
-            continue
-        if not observation.ran:
-            unrunnable.append(f"{predicate.id}: {observation.detail}")
-        elif observation.exit_code != predicate.expect_exit:
-            failed.append(
-                f"{predicate.id}: exit {observation.exit_code} "
-                f"(wanted {predicate.expect_exit}) {observation.detail}"[:200]
-            )
-        else:
-            passed.append(predicate.id)
-
-    common = dict(
-        constraint_breaks=tuple(breaks),
-        failed=tuple(failed),
-        unrunnable=tuple(unrunnable),
-        passed=tuple(passed),
-        needs_human=tuple(needs_human),
-    )
-
-    # --- kill path first, and constraint breaks outrank everything. A run
-    # that touched what it promised not to touch is not partially fine.
-    if breaks:
-        return Verdict(
-            BLOCK,
-            f"{len(breaks)} protected path(s) changed: " + "; ".join(breaks[:3]),
-            decided_by="constraint_breaks",
-            **common,
-        )
-    if failed:
-        return Verdict(
-            BLOCK,
-            f"{len(failed)} completion check(s) failed: " + "; ".join(failed[:3]),
-            decided_by="failed",
-            **common,
-        )
-    if unrunnable:
-        return Verdict(
-            UNVERIFIABLE,
-            f"{len(unrunnable)} check(s) could not be run, so the work is "
-            "unverified rather than accepted: " + "; ".join(unrunnable[:3]),
-            decided_by="unrunnable",
-            **common,
-        )
-    if needs_human:
-        return Verdict(
-            HUMAN_REVIEW,
-            f"machine checks passed; {len(needs_human)} item(s) need a person: "
-            + "; ".join(needs_human[:3]),
-            decided_by="needs_human",
-            **common,
-        )
-    return Verdict(
-        PASS,
-        f"{len(passed)} check(s) passed and "
-        f"{sum(len(c.paths) for c in contract.constraints)} protected path(s) "
-        "are unchanged",
-        decided_by="passed",
-        **common,
-    )

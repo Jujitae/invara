@@ -22,7 +22,8 @@ from typing import Any, Sequence
 
 from . import store
 from .contract import BLOCK, PASS, UNVERIFIABLE, Constraint, NotVerifiable, Predicate, seal
-from .runner import DEFAULT_TIMEOUT_S, digest_paths, judge, observe
+from .runner import DEFAULT_TIMEOUT_S, digest_paths, observe
+from .verdict import judge
 
 #: Exit codes, so a shell or a CI step can act without parsing text.
 EXIT_OK = 0

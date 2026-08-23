@@ -399,15 +399,19 @@ class EveryVerdictNamesItsDecider(Sandbox):
         with self.assertRaises(TypeError):
             Verdict(PASS, "everything was fine")  # type: ignore[call-arg]
 
-    def test_every_exit_in_the_runner_fills_it(self) -> None:
+    def test_every_exit_in_the_judge_fills_it(self) -> None:
         """Counted in the source, so a sixth exit cannot be added silently.
 
         The dataclass stops a verdict with *no* decider. Only this stops a
         future branch from being written with a decider copied off its
         neighbour, which is the same failure one step later.
+
+        Reads ``verdict.py``: the ladder moved there when the core purity gate
+        went in, and a source-counting test has to follow the source or it
+        starts counting an empty file and passing.
         """
 
-        source = (PACKAGE / "runner.py").read_text(encoding="utf-8")
+        source = (PACKAGE / "verdict.py").read_text(encoding="utf-8")
         self.assertEqual(source.count("Verdict("), source.count("decided_by="))
         self.assertEqual(source.count("Verdict("), 5)
 
@@ -476,6 +480,188 @@ class NoSelfReport(unittest.TestCase):
         self.assertIn("sha256", body)
         for smell in ("openai", "anthropic", "llm", "prompt"):
             self.assertNotIn(smell, body.lower())
+
+
+#: The modules that hold the verdict semantics. ``seal`` lives in one and
+#: ``judge`` in the other, and :class:`TheCoreIsPure` asserts that too — a
+#: gate aimed at a module that no longer holds the thing it was written for
+#: goes green by looking at nothing.
+CORE_MODULES = ("contract", "verdict")
+
+#: What "pure" means, written as module names instead of as a feeling.
+#: Grouped the way ``ADR-0016`` groups them: *network, clock, storage,
+#: billing, auth and execution adapters live outside core*.
+IMPURE_ROOTS = frozenset(
+    {
+        # Execution — the whole point. A core that can start a process can
+        # decide something the evidence did not.
+        "subprocess", "multiprocessing", "signal", "ctypes", "runpy",
+        "importlib",
+        # The filesystem, and the process it is running in.
+        "io", "os", "sys", "pathlib", "shutil", "tempfile", "glob",
+        "fileinput", "sqlite3", "dbm", "shelve", "pickle",
+        # The clock. ``sealed_at`` is injected precisely so this stays out.
+        "time", "datetime", "calendar", "zoneinfo",
+        # The network.
+        "socket", "ssl", "http", "urllib", "ftplib", "smtplib", "imaplib",
+        "poplib", "xmlrpc", "asyncio", "selectors", "select", "webbrowser",
+        # Anything that answers the same question twice with two answers.
+        # Not in the ADR's list, and it belongs: replay is the claim, and a
+        # verdict that cannot be re-derived is not a verdict.
+        "random", "secrets", "uuid", "threading",
+    }
+)
+
+
+def module_imports(source: str) -> tuple[set[str], set[str]]:
+    """What one module pulls in: outside roots, and siblings of its own package.
+
+    ``ast`` rather than a regex or an actual import, because the question is
+    about the source as written. Importing it to look would run it, and a
+    module that reaches for the clock at import time is exactly the case this
+    has to catch without executing.
+
+    ``ast.walk`` and not a top-level scan: an import inside a function is
+    still an import, and moving one there is the cheapest way to walk past a
+    gate that only reads the header.
+    """
+
+    absolute: set[str] = set()
+    siblings: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            absolute |= {alias.name.split(".")[0] for alias in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                if node.module:
+                    siblings.add(node.module.split(".")[0])
+                else:  # from . import store
+                    siblings |= {alias.name for alias in node.names}
+            elif node.module:
+                absolute.add(node.module.split(".")[0])
+    return absolute, siblings
+
+
+def core_violations(modules, read) -> list[str]:
+    """Every way the core reaches for the world. Empty means it does not.
+
+    Two rules, and the second is the one that is easy to forget: a core
+    module may import stdlib names that are not on the impure list, and it
+    may import *other core modules* — nothing else. Purity that only holds
+    for the module you are looking at is not purity, because the import one
+    level down is where it would actually leak.
+
+    ``read`` takes a module name and returns its source, so the same checker
+    can be pointed at planted sources to prove it still reports.
+    """
+
+    problems: list[str] = []
+    for name in modules:
+        absolute, siblings = module_imports(read(name))
+        for root in sorted(absolute & IMPURE_ROOTS):
+            problems.append(f"{name} imports {root}")
+        for sibling in sorted(siblings):
+            if sibling not in modules:
+                problems.append(f"{name} imports {sibling}, which is not core")
+    return problems
+
+
+def core_source(name: str) -> str:
+    return (PACKAGE / f"{name}.py").read_text(encoding="utf-8")
+
+
+class TheCoreIsPure(unittest.TestCase):
+    """``ADR-0016`` invariant 1, held by a test instead of by memory.
+
+    *INVARA core verification semantics stay deterministic and pure; network,
+    clock, storage, billing, auth and execution adapters live outside core.*
+
+    The ADR recorded that this was already true and pointed at the two
+    functions. It was true of the functions and false of the modules —
+    ``judge`` sat in :mod:`invara.runner`, which imports ``subprocess`` at the
+    top, so the first run of this gate was red before anything was planted in
+    it. That is the ADR's own invalidation condition, and what it asks for at
+    that point is separation recovery rather than a feature, so ``judge`` and
+    ``Observation`` moved to :mod:`invara.verdict`.
+
+    Why the module and not the function: a per-function rule can only be
+    checked by reading every function, and a rule nobody can check has already
+    started drifting. This is what ``ADR-0016`` calls the seam the business
+    model rests on — the same contract meaning the same thing under a CLI, an
+    MCP server, a plugin, CI or a hosted API — and it is far cheaper to hold
+    now than to recover later.
+    """
+
+    def test_the_core_reaches_for_nothing(self) -> None:
+        self.assertEqual(core_violations(CORE_MODULES, core_source), [])
+
+    def test_it_is_aimed_at_the_modules_that_hold_the_semantics(self) -> None:
+        """A gate pointed at the wrong file is green and means nothing.
+
+        The list above is two strings. Without this, moving ``judge`` back
+        into the runner would leave the gate passing over a module that no
+        longer decides anything — the failure where the command runs, the
+        number is real, and it counted something else.
+        """
+
+        self.assertEqual(seal.__module__, "invara.contract")
+        self.assertEqual(judge.__module__, "invara.verdict")
+        self.assertEqual(
+            sorted(CORE_MODULES),
+            sorted({seal.__module__.split(".")[-1], judge.__module__.split(".")[-1]}),
+        )
+
+    def test_the_gate_reports_a_planted_import(self) -> None:
+        """Rule 27: prove the harness can go red before believing it green.
+
+        A checker that silently finds nothing and a core that is genuinely
+        clean produce the identical empty list. The only way to tell them
+        apart is to hand it something it must object to.
+        """
+
+        planted = {
+            "contract": "import time\n",
+            "verdict": "from .contract import Verdict\n",
+        }
+        self.assertEqual(
+            core_violations(CORE_MODULES, planted.__getitem__),
+            ["contract imports time"],
+        )
+
+    def test_it_sees_an_import_hidden_inside_a_function(self) -> None:
+        planted = {
+            "contract": "def now():\n    import datetime\n    return 1\n",
+            "verdict": "",
+        }
+        self.assertEqual(
+            core_violations(CORE_MODULES, planted.__getitem__),
+            ["contract imports datetime"],
+        )
+
+    def test_it_sees_the_leak_one_module_down(self) -> None:
+        """The interesting case. Core stays clean by importing something dirty."""
+
+        planted = {
+            "contract": "",
+            "verdict": "from .runner import run_predicate\n",
+        }
+        self.assertEqual(
+            core_violations(CORE_MODULES, planted.__getitem__),
+            ["verdict imports runner, which is not core"],
+        )
+
+    def test_it_does_not_object_to_everything(self) -> None:
+        """The other half of the differential: a clean source must pass.
+
+        Without this the three tests above are also satisfied by a checker
+        that reports on any input at all.
+        """
+
+        planted = {
+            "contract": "from dataclasses import dataclass\nimport hashlib\n",
+            "verdict": "from .contract import Verdict\n",
+        }
+        self.assertEqual(core_violations(CORE_MODULES, planted.__getitem__), [])
 
 
 class TheStore(Sandbox):

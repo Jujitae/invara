@@ -18,7 +18,7 @@ from typing import Any, Sequence
 
 from . import chain
 from .contract import VerificationContract, Verdict
-from .runner import Observation
+from .verdict import Observation
 
 __all__ = [
     "DEFAULT_PATH",

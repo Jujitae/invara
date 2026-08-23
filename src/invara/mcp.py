@@ -44,7 +44,8 @@ from typing import Any, Callable
 
 from . import store
 from .contract import Constraint, NotVerifiable, Predicate, seal
-from .runner import DEFAULT_TIMEOUT_S, digest_paths, judge, observe
+from .runner import DEFAULT_TIMEOUT_S, digest_paths, observe
+from .verdict import judge
 
 __all__ = ["main", "serve"]
 

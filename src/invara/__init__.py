@@ -52,7 +52,8 @@ from .contract import (
     Verdict,
     seal,
 )
-from .runner import digest_paths, judge, observe
+from .runner import digest_paths, observe
+from .verdict import Observation, judge
 
 __all__ = [
     "BLOCK",
@@ -61,6 +62,7 @@ __all__ = [
     "UNVERIFIABLE",
     "Constraint",
     "NotVerifiable",
+    "Observation",
     "Predicate",
     "Verdict",
     "VerificationContract",
