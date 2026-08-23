@@ -61,8 +61,12 @@ def _version() -> str:
     about what it had just installed. The number lives in ``pyproject.toml``
     and the installed metadata is that number, so it is read from there.
 
-    A checkout run through ``PYTHONPATH`` has no installed distribution. That
-    is not an error and it is also not a version, so it says neither.
+    What it reads is distribution metadata, and a checkout can have that too:
+    a leftover ``src/*.egg-info`` from a local ``python -m build`` answers just
+    like an install would. So the number here is the metadata's claim, not
+    proof that the package was installed -- and if that metadata is stale the
+    claim is stale with it. ``0+unknown`` is only for when there is no metadata
+    at all, which is not an error and is also not a version.
     """
 
     try:
