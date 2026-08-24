@@ -149,7 +149,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
         mark = "ok " if observation.ran and observation.exit_code == 0 else "!! "
         if not observation.ran:
             mark = ".. "
-        print(f"  {mark}{observation.predicate_id:<28} {observation.detail[:80]}")
+        print(f"  {mark}{observation.predicate_id:<28} {observation.detail}")
     print()
     print(f"  {verdict.status}: {verdict.reason}")
     print(f"  decided by: {verdict.decided_by}")
