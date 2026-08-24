@@ -6,6 +6,7 @@ thing it verifies can be broken by the thing it verifies.
     invara init                 generate a task.json template from the repository
     invara seal   <task.json>   seal the contract; refuses if it cannot fail
     invara judge  <task_id>     run the checks and record what happened
+    invara replay <task_id>     replay a verdict from stored observations
     invara list                 sealed tasks and their latest verdict
     invara log    <task_id>     every verdict this task has had
     invara show   <task_id>     the sealed contract, as sealed
@@ -24,7 +25,7 @@ from typing import Any, Sequence
 from . import store
 from .contract import BLOCK, PASS, UNVERIFIABLE, Constraint, NotVerifiable, Predicate, seal
 from .runner import DEFAULT_TIMEOUT_S, digest_paths, observe
-from .verdict import judge
+from .verdict import Observation, judge
 
 #: Exit codes, so a shell or a CI step can act without parsing text.
 EXIT_OK = 0
@@ -162,6 +163,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
             verdict,
             observations,
             observed_at=_now(),
+            current=current,
         )
         print("  recorded")
     else:
@@ -216,6 +218,69 @@ def cmd_chain(args: argparse.Namespace) -> int:
     result = store.verify(connection)
     print(json.dumps(result, ensure_ascii=False, indent=1))
     return EXIT_OK if result["ok"] else EXIT_BLOCK
+
+
+def cmd_replay(args: argparse.Namespace) -> int:
+    """Replay a verdict from stored observations.
+
+    Recomputes the verdict using the observations and current state that were
+    recorded at the time, and compares it against what was stored. If they
+    match, the judgement is reproducible. If they differ, the verdict logic
+    has changed or the stored data is corrupt.
+    """
+
+    connection = _store(args.db)
+    try:
+        contract = store.load_contract(connection, args.task_id)
+    except KeyError:
+        print(f"no sealed contract for {args.task_id}")
+        return EXIT_REFUSED
+
+    verdicts = store.history(connection, args.task_id)
+    if not verdicts:
+        print(f"{args.task_id} has never been judged")
+        return EXIT_REFUSED
+
+    stored = verdicts[-1]
+    observations_data = json.loads(stored["observations_json"])
+    observations = [Observation(**obs) for obs in observations_data["items"]]
+    current = observations_data.get("current")
+
+    if current is None:
+        print("REFUSED no_current_stored: this verdict predates replay support")
+        print(f"  judged at {_stamp(stored['observed_at'])}")
+        print("  re-judge with --commit to record current state")
+        return EXIT_REFUSED
+
+    recomputed = judge(contract, current, observations)
+    stored_detail = json.loads(stored["detail_json"])
+
+    mismatches = []
+    if recomputed.status != stored["status"]:
+        mismatches.append(f"status: {stored['status']} -> {recomputed.status}")
+    if recomputed.reason != stored["reason"]:
+        mismatches.append(f"reason: {stored['reason']} -> {recomputed.reason}")
+    if recomputed.decided_by != stored_detail.get("decided_by"):
+        mismatches.append(
+            f"decided_by: {stored_detail.get('decided_by')} -> {recomputed.decided_by}"
+        )
+
+    print(f"replaying {contract.task_id}  (judged {_stamp(stored['observed_at'])})")
+    print(f"  {contract.intent}")
+    print()
+    if mismatches:
+        print("MISMATCH verdict changed:")
+        for line in mismatches:
+            print(f"  {line}")
+        print()
+        print(f"  stored:     {stored['status']}: {stored['reason']}")
+        print(f"  recomputed: {recomputed.status}: {recomputed.reason}")
+        return EXIT_BLOCK
+    else:
+        print(f"  {recomputed.status}: {recomputed.reason}")
+        print(f"  decided by: {recomputed.decided_by}")
+        print("  verdict matches stored")
+        return EXIT_OK
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -337,6 +402,11 @@ def build_parser() -> argparse.ArgumentParser:
     init_p = sub.add_parser("init", help="generate a task.json template")
     common(init_p)
     init_p.set_defaults(func=cmd_init)
+
+    replay_p = sub.add_parser("replay", help="replay a verdict from stored observations")
+    common(replay_p)
+    replay_p.add_argument("task_id")
+    replay_p.set_defaults(func=cmd_replay)
 
     return parser
 

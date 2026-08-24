@@ -1022,7 +1022,7 @@ class TheEditorSurface(Sandbox):
         tools = self._rpc({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})[0]["result"]["tools"]
         self.assertEqual(
             sorted(t["name"] for t in tools),
-            ["invara_chain", "invara_judge", "invara_list", "invara_log", "invara_seal"],
+            ["invara_chain", "invara_judge", "invara_list", "invara_log", "invara_replay", "invara_seal"],
         )
         for tool in tools:
             self.assertEqual(tool["inputSchema"]["type"], "object")
@@ -1086,6 +1086,31 @@ class TheEditorSurface(Sandbox):
         answered = [json.loads(line) for line in out.getvalue().splitlines()]
         self.assertEqual(answered[0]["error"]["code"], -32700)
         self.assertEqual(answered[1]["id"], 7)
+
+    def test_replay_reproduces_a_stored_verdict(self) -> None:
+        """Replay recomputes the verdict from stored observations and current state."""
+
+        (self.root / "stable.txt").write_text("unchanged", encoding="utf-8")
+
+        spec = self.root / "task.json"
+        spec.write_text(json.dumps({
+            "task_id": "T-replay",
+            "intent": "test replay",
+            "constraints": [{"kind": "paths_unchanged", "paths": ["stable.txt"], "reason": "frozen"}],
+            "done_when": [{"id": "check", "command": OK, "expect_exit": 0, "reason": "must pass"}],
+        }), encoding="utf-8")
+
+        self._call("invara_seal", task_file=str(spec))
+        verdict, _ = self._call("invara_judge", task_id="T-replay", commit=True)
+        self.assertEqual(verdict["status"], "PASS")
+
+        replayed, errored = self._call("invara_replay", task_id="T-replay")
+        self.assertFalse(errored)
+        self.assertEqual(replayed["status"], "PASS")
+        self.assertEqual(replayed["decided_by"], "passed")
+        self.assertTrue(replayed["matches"])
+        self.assertEqual(replayed["stored_status"], "PASS")
+        self.assertEqual(replayed["stored_decided_by"], "passed")
 
 
 if __name__ == "__main__":
