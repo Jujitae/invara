@@ -2,12 +2,11 @@
   "mcpServers": {
     "invara": {
       "type": "stdio",
-      "command": "uvx",
-      "args": [
-        "--from",
-        "invara",
-        "invara-mcp"
-      ]
+      "command": "python",
+      "env": {
+        "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}/src"
+      },
+      "args": ["-m", "invara.mcp"]
     }
   }
 }

@@ -29,12 +29,13 @@ Every verdict also names the rule that decided it, so it can be argued with.
 
 ## Install
 
-Requires Python 3.12+ and uv.
+Requires Python 3.12+.
 
-The plugin declares the MCP server; the server itself comes from PyPI:
+The plugin is self-contained. Install from the Claude Code plugin marketplace:
 
-```bash
-uvx --from invara invara-mcp
+```
+/plugin marketplace add Jujitae/invara
+/plugin install invara
 ```
 
 Zero runtime dependencies, by design and permanently — nothing in the verdict
