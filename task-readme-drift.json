@@ -1,0 +1,31 @@
+{
+  "task_id": "2026-08-24-readme-drift-v2",
+  "intent": "Fix README drift where CLI section removed uv prerequisite but still shows uvx command, and plugin section still documents old uvx path instead of new python -m path",
+  "constraints": [
+    {
+      "kind": "paths_unchanged",
+      "paths": ["pyproject.toml"],
+      "reason": "Documentation fix — only README.md should change, not code or package definition"
+    }
+  ],
+  "done_when": [
+    {
+      "id": "cli_section_coherent",
+      "command": ["python", "-c", "import sys; content = open('README.md', encoding='utf-8').read(); lines = content.split('\\n'); assert 'uv' in lines[73].lower() or 'uvx' not in '\\n'.join(lines[70:90]), 'CLI section must mention uv prerequisite when showing uvx command, or not show uvx at all'; sys.exit(0)"],
+      "expect_exit": 0,
+      "reason": "CLI section (§72) prerequisite line must be coherent with the commands shown — if it shows uvx, uv must be in prerequisites"
+    },
+    {
+      "id": "plugin_section_updated",
+      "command": ["python", "-c", "import sys; content = open('README.md', encoding='utf-8').read(); lines = content.split('\\n'); plugin_section = '\\n'.join(lines[196:224]); assert 'python -m' in plugin_section and 'invara.mcp' in plugin_section and 'command\": \"python\"' in plugin_section, 'Plugin section (§196) must show python -m invara.mcp command, not uvx'; sys.exit(0)"],
+      "expect_exit": 0,
+      "reason": "Plugin section (§196) must document current python -m path (matching 5ee79d1 plugin change), not obsolete uvx path"
+    },
+    {
+      "id": "no_obsolete_uvx_troubleshooting",
+      "command": ["python", "-c", "import sys; content = open('README.md', encoding='utf-8').read(); lines = content.split('\\n'); plugin_start = 196; plugin_end = min(len(lines), 245); plugin_text = '\\n'.join(lines[plugin_start:plugin_end]); config_uses_uvx = 'uvx' in lines[201] if len(lines) > 201 else False; troubleshoot_exists = any('uvx invara-mcp' in l and 'does not work' in lines[i] if i < len(lines) else False for i, l in enumerate(lines) if plugin_start <= i < plugin_end); assert not (troubleshoot_exists and not config_uses_uvx), 'uvx troubleshooting must be removed if plugin config no longer uses uvx'; sys.exit(0)"],
+      "expect_exit": 0,
+      "reason": "If plugin no longer uses uvx, the uvx troubleshooting paragraph (219~222) must be removed or updated"
+    }
+  ]
+}

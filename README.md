@@ -71,7 +71,7 @@ The narrow claim, which is what the machine actually does:
 
 ## Install and first verdict, in five minutes
 
-Nothing to configure. No API key, no service, no account. Python 3.12+.
+Nothing to configure. No API key, no service, no account. Python 3.12+ and uv.
 
 ```bash
 uvx invara list
@@ -196,30 +196,31 @@ once and judged many times; the history is append-only and chained.
 ## Inside the editor
 
 The buyer this was built for does not open a terminal. So the same package
-ships an MCP server, and the agent already in the editor installs it:
+ships an MCP server, self-contained as a Claude Code plugin:
 
 ```bash
-claude mcp add invara -- uvx --from invara invara-mcp
+/plugin marketplace add Jujitae/invara
+/plugin install invara
 ```
 
-which writes this, and any client that reads the same shape will do:
+The plugin bundles the INVARA source and runs via `python -m`, requiring only
+Python 3.12+ — no uv, no network, zero runtime dependencies. The configuration
+it writes looks like this:
 
 ```json
 {
   "mcpServers": {
     "invara": {
       "type": "stdio",
-      "command": "uvx",
-      "args": ["--from", "invara", "invara-mcp"]
+      "command": "python",
+      "env": {
+        "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}/src"
+      },
+      "args": ["-m", "invara.mcp"]
     }
   }
 }
 ```
-
-**`uvx invara-mcp` does not work**, and it is the obvious thing to try:
-`invara-mcp` is a command inside the `invara` package, not a package of its
-own, so uv answers `invara-mcp was not found in the package registry`. The
-`--from` is doing real work.
 
 Five tools — `invara_seal`, `invara_judge`, `invara_list`, `invara_log`,
 `invara_chain`. They are the commands above, and they change nothing about
