@@ -71,7 +71,7 @@ The narrow claim, which is what the machine actually does:
 
 ## Install and first verdict, in five minutes
 
-Nothing to configure. No API key, no service, no account. Python 3.12+.
+Nothing to configure. No API key, no service, no account. Python 3.12+ and uv.
 
 ```bash
 uvx invara list

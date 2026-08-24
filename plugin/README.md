@@ -29,6 +29,8 @@ Every verdict also names the rule that decided it, so it can be argued with.
 
 ## Install
 
+Requires Python 3.12+ and uv.
+
 The plugin declares the MCP server; the server itself comes from PyPI:
 
 ```bash
