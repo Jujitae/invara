@@ -12,6 +12,7 @@ import dataclasses
 import importlib.metadata
 import io
 import json
+import os
 import re
 import sqlite3
 import sys
@@ -19,6 +20,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from invara import _version_refusal
 from invara import chain
 from invara import mcp
 from invara import store
@@ -43,6 +45,7 @@ from invara.contract import (
 )
 from invara.runner import (
     Observation,
+    _store_alias_detail,
     digest_paths,
     judge,
     observe,
@@ -1111,6 +1114,155 @@ class TheEditorSurface(Sandbox):
         self.assertTrue(replayed["matches"])
         self.assertEqual(replayed["stored_status"], "PASS")
         self.assertEqual(replayed["stored_decided_by"], "passed")
+
+
+class TheSilentAliasSpeaks(Sandbox):
+    """INV-011: the failure a Python-less Windows serves at the front door.
+
+    Measured on Windows (2026-08-29): the Microsoft Store's app-execution
+    alias for ``python`` exists, spawns, and dies with exit 9009 and exactly
+    seven bytes of stderr, ``"Python "`` -- and through a layer that truncates
+    exit codes to eight bits the same death reads as 49. A product that
+    forbids silence on the verdict path does not get to serve that silence
+    itself, so both the runner (checks that spawn ``python``) and the package
+    entry (an interpreter below the floor) must say what is missing, how to
+    fix it, and whose fault it is not -- in English and Korean.
+    """
+
+    #: The three obligations of INV-010 §3, as substrings the message must
+    #: carry: (A) what is missing by name, (B) how to fix it, (C) that it is
+    #: not INVARA's defect -- the last in both languages.
+    OBLIGATIONS = ("python", "python.org", "winget", "INVARA", "설치")
+
+    def _mimic(self, exit_code: int = 49) -> list[str]:
+        """A real spawn wearing the alias's measured clothes.
+
+        ``sys.executable`` so the program is python-named on every platform;
+        the child writes the seven measured bytes and dies with the measured
+        (truncated) code. POSIX cannot return 9009 from a child at all, which
+        is why the truncated form is the one exercised end to end.
+        """
+
+        return [
+            sys.executable,
+            "-c",
+            f"import sys; sys.stderr.write('Python '); sys.exit({exit_code})",
+        ]
+
+    @unittest.skipUnless(os.name == "nt", "the Store alias is a Windows fact")
+    def test_store_alias_interception_is_reported_as_not_run(self) -> None:
+        observation = run_predicate(
+            Predicate("suite", tuple(self._mimic())), self.root, timeout_s=60
+        )
+        self.assertFalse(observation.ran)
+        self.assertIsNone(observation.exit_code)
+        for needle in self.OBLIGATIONS:
+            self.assertIn(needle, observation.detail)
+        # Storage truncates details at 500 characters; the Korean half must
+        # not be the half that pays for that.
+        self.assertLessEqual(len(observation.detail), 500)
+
+    @unittest.skipUnless(os.name == "nt", "the Store alias is a Windows fact")
+    def test_store_alias_makes_the_verdict_unverifiable_not_block(self) -> None:
+        """An interpreter that never ran has told us nothing.
+
+        "Nothing" must not arrive at the verdict wearing a broken promise's
+        clothes: the check was not run, so the work is unverified rather
+        than judged to have failed.
+        """
+
+        sealed = contract_over(self.root, Predicate("suite", tuple(self._mimic())))
+        current, observations = observe(sealed, self.root, timeout_s=60)
+        verdict = judge(sealed, current, observations)
+        self.assertEqual(verdict.status, UNVERIFIABLE)
+        self.assertEqual(verdict.decided_by, "unrunnable")
+        self.assertIn("Microsoft Store", verdict.reason)
+
+    def test_store_alias_detection_matches_only_the_measured_signature(self) -> None:
+        """The gate is as narrow as the measurement, on purpose."""
+
+        caught = _store_alias_detail(["python"], 9009, "", "Python ", platform="nt")
+        self.assertIsNotNone(caught)
+        self.assertIn("9009", caught)
+        also = _store_alias_detail(
+            [r"C:\Users\x\AppData\Local\Microsoft\WindowsApps\python.exe"],
+            49, "", "", platform="nt",
+        )
+        self.assertIsNotNone(also)
+
+        for command, code, out, err in (
+            (["python"], 49, "", "AssertionError: boom"),  # real output
+            (["git"], 9009, "", "Python "),  # not python-named
+            (["python"], 1, "", "Python "),  # not a measured exit
+            ([], 9009, "", "Python "),  # nothing was spawned
+        ):
+            self.assertIsNone(
+                _store_alias_detail(command, code, out, err, platform="nt"),
+                (command, code, out, err),
+            )
+        # And never off Windows: exit 49 with quiet output is an honest
+        # failure a POSIX child is allowed to have.
+        self.assertIsNone(
+            _store_alias_detail(["python"], 49, "", "Python ", platform="posix")
+        )
+
+    def test_version_floor_refusal_names_the_problem_and_the_fix(self) -> None:
+        """Below 3.12 the package must refuse in words, not in a traceback.
+
+        pip enforces ``requires-python`` but the plugin ships bundled source
+        on PYTHONPATH and never asks pip, so the package itself is the last
+        gate that can speak.
+        """
+
+        refusal = _version_refusal((3, 11, 9, "final", 0))
+        self.assertIsNotNone(refusal)
+        for needle in ("3.12", "3.11") + self.OBLIGATIONS:
+            self.assertIn(needle, refusal)
+        self.assertIsNone(_version_refusal(sys.version_info))
+
+    def test_version_floor_guard_stands_before_the_package_imports(self) -> None:
+        """The guard is only worth having if it runs before what it guards.
+
+        An old interpreter dies importing the modern modules, so the refusal
+        must be raised before ``__init__`` touches any of them. Held by
+        source order rather than by running an old interpreter.
+        """
+
+        tree = ast.parse((PACKAGE / "__init__.py").read_text(encoding="utf-8"))
+        guarded_at = package_import_at = None
+        for index, node in enumerate(tree.body):
+            if guarded_at is None and isinstance(node, ast.If):
+                raises = [
+                    n for n in ast.walk(node)
+                    if isinstance(n, ast.Raise)
+                    and isinstance(n.exc, ast.Call)
+                    and getattr(n.exc.func, "id", "") == "ImportError"
+                ]
+                if raises:
+                    guarded_at = index
+            if package_import_at is None and (
+                isinstance(node, ast.ImportFrom) and node.level
+            ):
+                package_import_at = index
+        self.assertIsNotNone(guarded_at, "no version guard raising ImportError")
+        self.assertIsNotNone(package_import_at)
+        self.assertLess(guarded_at, package_import_at)
+
+    def test_the_plugin_bundle_carries_the_store_alias_fix(self) -> None:
+        """The plugin ships this package as a copy, and a copy can drift.
+
+        Both modules that carry INV-011 must be byte-identical in the bundle,
+        or the surface this failure was reported from is the one surface
+        that never receives the repair.
+        """
+
+        bundled = PACKAGE.parents[1] / "plugin" / "src" / "invara"
+        for name in ("__init__.py", "runner.py"):
+            self.assertEqual(
+                (PACKAGE / name).read_bytes(),
+                (bundled / name).read_bytes(),
+                f"plugin/src/invara/{name} differs from src/invara/{name}",
+            )
 
 
 if __name__ == "__main__":
