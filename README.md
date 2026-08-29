@@ -204,8 +204,12 @@ ships an MCP server, self-contained as a Claude Code plugin:
 ```
 
 The plugin bundles the INVARA source and runs via `python -m`, requiring only
-Python 3.12+ — no uv, no network, zero runtime dependencies. The configuration
-it writes looks like this:
+Python 3.12+ — no uv, no network, zero runtime dependencies. If the server
+will not start, `/invara:doctor` diagnoses the environment without assuming
+Python exists — the known silent case is Windows without Python, where the
+Microsoft Store's `python` alias spawns and dies with exit 9009 and seven
+bytes of stderr (`Python `); that death happens before any INVARA code runs.
+The configuration the plugin writes looks like this:
 
 ```json
 {

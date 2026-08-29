@@ -20,6 +20,7 @@ and moving a name is not the same as renaming it.
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 from pathlib import Path
 from typing import Iterable, Sequence
@@ -83,6 +84,65 @@ def resolve_program(command: Sequence[str], root: Path) -> list[str]:
     return list(command)
 
 
+#: What the Microsoft Store's app-execution alias for ``python`` actually does
+#: when Python is not installed, measured on Windows (INV-011, 2026-08-29):
+#: it exits 9009 (0x2331) with exactly seven bytes of stderr,
+#: ``"Python "``, and nothing on stdout. Through a layer that truncates exit
+#: codes to eight bits the same death reads as 49 (9009 % 256). Both are held
+#: here because both have been observed for the one event.
+_STORE_ALIAS_EXITS = frozenset({9009, 49})
+
+
+def _store_alias_detail(
+    command: Sequence[str],
+    returncode: int,
+    stdout: str,
+    stderr: str,
+    platform: str | None = None,
+) -> str | None:
+    """The readable account of a Store-alias interception, or ``None``.
+
+    Windows without Python is not Windows without a ``python`` command: the
+    Store puts an alias on PATH that exists, spawns, and dies with seven
+    bytes of stderr. To everything upstream that is indistinguishable from a
+    check that ran and failed -- which is exactly the wrong clothes for it
+    (see :func:`run_predicate`). A product that forbids silence on the
+    verdict path does not get to pass this particular silence through.
+
+    The gate is deliberately narrow -- a python-named program, one of the two
+    measured exit codes, and output that is empty or the measured seven-byte
+    fragment -- so an honest check that legitimately exits 49 with real
+    output keeps its own report. ``platform`` is an argument so a test can
+    exercise both sides without pretending about the machine it runs on.
+    """
+
+    if (platform or os.name) != "nt":
+        return None
+    if returncode not in _STORE_ALIAS_EXITS:
+        return None
+    if not command:
+        return None
+    program = Path(command[0]).name.lower().removesuffix(".exe")
+    if not program.startswith("python"):
+        return None
+    chatter = (stdout or "").strip() + (stderr or "").strip()
+    if chatter not in ("", "Python"):
+        return None
+    # Held under Observation.as_dict's 500-character detail cap, so the
+    # Korean half is not the half that gets truncated away in storage.
+    return (
+        f"python did not run: the Microsoft Store alias answered instead "
+        f"(exit {returncode}, stderr 'Python '). Python is not actually "
+        f"installed, or not on PATH. Fix: install Python 3.12+ "
+        f"(https://www.python.org/downloads/ or winget install "
+        f"Python.Python.3.12), or disable the alias in Settings > Apps > "
+        f"App execution aliases. Not an INVARA defect. | "
+        f"python 이 실행되지 않았습니다. Microsoft Store 별칭이 가로챘습니다 "
+        f"(Python 미설치). Python 3.12+ 를 설치하거나(python.org / winget) "
+        f"앱 실행 별칭에서 python 을 끄세요. INVARA 고장이 아닙니다."
+    )
+
+
 def run_predicate(
     predicate: Predicate, root: Path, timeout_s: int = DEFAULT_TIMEOUT_S
 ) -> Observation:
@@ -120,6 +180,16 @@ def run_predicate(
         return Observation(
             predicate.id, None, False, f"timed out after {timeout_s}s"
         )
+    intercepted = _store_alias_detail(
+        predicate.command, completed.returncode, completed.stdout, completed.stderr
+    )
+    if intercepted is not None:
+        # The Store alias ran; python did not. Reporting this as "ran and
+        # failed" would let a missing interpreter arrive at the verdict
+        # wearing a broken promise's clothes, so it goes down the same road
+        # as FileNotFoundError above: not run, and saying why in words the
+        # buyer can act on (INV-011).
+        return Observation(predicate.id, None, False, intercepted)
     tail = (completed.stdout or "").strip().splitlines()
     stderr = (completed.stderr or "").strip().splitlines()
     detail = " | ".join((tail[-1:] or [""]) + (stderr[-1:] or []))
