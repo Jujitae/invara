@@ -1251,17 +1251,86 @@ class TheSilentAliasSpeaks(Sandbox):
     def test_the_plugin_bundle_carries_the_store_alias_fix(self) -> None:
         """The plugin ships this package as a copy, and a copy can drift.
 
-        Both modules that carry INV-011 must be byte-identical in the bundle,
-        or the surface this failure was reported from is the one surface
-        that never receives the repair.
+        Naming only the two INV-011 modules here was too narrow, and the
+        narrowness was not theoretical: `mcp.py`, `store.py` and
+        `__main__.py` had already drifted behind `src/` by a whole tool
+        (`invara_replay`) while this test stayed green. A copy that is
+        checked in part is a copy nobody is checking.
+
+        So the rule is now the whole package, discovered rather than listed
+        — a module added to `src/invara/` and forgotten in the bundle fails
+        here instead of shipping.
         """
 
         bundled = PACKAGE.parents[1] / "plugin" / "src" / "invara"
-        for name in ("__init__.py", "runner.py"):
+        names = sorted(p.name for p in PACKAGE.glob("*.py"))
+        self.assertIn("__init__.py", names, "no modules discovered to compare")
+        for name in names:
+            self.assertTrue(
+                (bundled / name).exists(),
+                f"plugin/src/invara/{name} is missing from the plugin bundle",
+            )
             self.assertEqual(
                 (PACKAGE / name).read_bytes(),
                 (bundled / name).read_bytes(),
                 f"plugin/src/invara/{name} differs from src/invara/{name}",
+            )
+
+    def test_the_plugin_bundle_carries_its_own_license(self) -> None:
+        """`git-subdir` distributes `plugin/` alone, not the repository.
+
+        The directory the marketplace fetches is the whole of what the user
+        receives, so a LICENSE that sits only at the repository root is a
+        licence the installed plugin does not have.
+        """
+
+        root = PACKAGE.parents[1]
+        for name in ("LICENSE", "NOTICE"):
+            bundled = root / "plugin" / name
+            self.assertTrue(bundled.exists(), f"plugin/{name} is missing")
+            self.assertEqual(
+                (root / name).read_bytes(),
+                bundled.read_bytes(),
+                f"plugin/{name} differs from {name}",
+            )
+
+    def test_the_plugin_manifest_version_matches_the_package(self) -> None:
+        """Two files state the version. They are one claim, so they must agree."""
+
+        root = PACKAGE.parents[1]
+        manifest = json.loads(
+            (root / "plugin" / ".claude-plugin" / "plugin.json").read_text("utf-8")
+        )
+        pyproject = (root / "pyproject.toml").read_text("utf-8")
+        match = re.search(r'(?m)^version\s*=\s*"([^"]+)"', pyproject)
+        self.assertIsNotNone(match, "no version in pyproject.toml")
+        self.assertEqual(
+            manifest["version"],
+            match.group(1),
+            "plugin.json version disagrees with pyproject.toml",
+        )
+
+    def test_the_plugin_readme_names_every_tool_it_ships(self) -> None:
+        """The bundle's README is submitted material; a stale tool list is a false claim.
+
+        It said "Five tools" while the server advertised six.
+        """
+
+        root = PACKAGE.parents[1]
+        readme = (root / "plugin" / "README.md").read_text("utf-8")
+        advertised = {tool["name"] for tool in mcp._tools()}
+        for name in sorted(advertised):
+            self.assertIn(
+                f"`{name}`", readme, f"plugin/README.md does not mention {name}"
+            )
+        counted = {
+            5: "Five tools", 6: "Six tools", 7: "Seven tools", 8: "Eight tools",
+        }.get(len(advertised))
+        if counted is not None:
+            self.assertIn(
+                counted,
+                readme,
+                f"plugin/README.md miscounts: {len(advertised)} tools are served",
             )
 
 

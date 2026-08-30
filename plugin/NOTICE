@@ -1,0 +1,7 @@
+INVARA
+Copyright 2026 MIGARYOS (미가리오스)
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product includes no third-party code. At runtime it imports only the
+Python standard library.

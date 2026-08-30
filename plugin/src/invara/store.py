@@ -129,6 +129,7 @@ def record_verdict(
     observations: Sequence[Observation],
     *,
     observed_at: float,
+    current: dict[str, dict[str, str]] | None = None,
 ) -> None:
     """Append a verdict. Never replaces one.
 
@@ -136,6 +137,10 @@ def record_verdict(
     judgement stays. A verifier whose history can be tidied is a verifier
     whose history means nothing.
     """
+
+    observations_data: dict[str, Any] = {"items": [o.as_dict() for o in observations]}
+    if current is not None:
+        observations_data["current"] = current
 
     chain.append(
         connection,
@@ -145,9 +150,7 @@ def record_verdict(
             "status": verdict.status,
             "reason": verdict.reason,
             "detail_json": chain.canonical_json(verdict.as_dict()),
-            "observations_json": chain.canonical_json(
-                {"items": [o.as_dict() for o in observations]}
-            ),
+            "observations_json": chain.canonical_json(observations_data),
             "observed_at": float(observed_at),
         },
         _verdict_payload,

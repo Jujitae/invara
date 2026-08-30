@@ -182,11 +182,17 @@ somebody saying yes, there is no contract.
 ## Other commands
 
 ```
-invara list             sealed tasks and their latest verdict
-invara log   <task_id>  every verdict this task has ever had
-invara show  <task_id>  the contract, exactly as sealed
-invara chain            rebuild both hash chains
+invara init              print a task.json template for this repository
+invara list              sealed tasks and their latest verdict
+invara log    <task_id>  every verdict this task has ever had
+invara show   <task_id>  the contract, exactly as sealed
+invara replay <task_id>  recompute a recorded verdict and compare it
+invara chain             rebuild both hash chains
 ```
+
+`invara replay` is the one that answers "was this verdict reproducible?" — it
+recomputes from the observations stored at the time. A verdict recorded before
+replay support refuses with `no_current_stored` rather than guessing.
 
 Verdicts live in `.runtime/verify.db` (`--db` to move it). A contract is sealed
 once and judged many times; the history is append-only and chained.
@@ -226,12 +232,12 @@ The configuration the plugin writes looks like this:
 }
 ```
 
-Five tools — `invara_seal`, `invara_judge`, `invara_list`, `invara_log`,
-`invara_chain`. They are the commands above, and they change nothing about
-what a verdict is: it is still computed from file digests and exit codes, the
-checks that run are the ones a sealed contract already named, and there is
-still no field anywhere for an agent to assert that the work is done. An agent
-can ask for a verdict here. It cannot give one.
+Six tools — `invara_seal`, `invara_judge`, `invara_list`, `invara_log`,
+`invara_chain`, `invara_replay`. They are the commands above, and they change
+nothing about what a verdict is: it is still computed from file digests and
+exit codes, the checks that run are the ones a sealed contract already named,
+and there is still no field anywhere for an agent to assert that the work is
+done. An agent can ask for a verdict here. It cannot give one.
 
 `invara` there is a local label — call it what you like. The server's actual
 identity is `io.github.Jujitae/invara`, which is how it is listed in the

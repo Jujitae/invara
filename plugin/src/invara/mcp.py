@@ -45,7 +45,7 @@ from typing import Any, Callable
 from . import store
 from .contract import Constraint, NotVerifiable, Predicate, seal
 from .runner import DEFAULT_TIMEOUT_S, digest_paths, observe
-from .verdict import judge
+from .verdict import Observation, judge
 
 __all__ = ["main", "serve"]
 
@@ -169,6 +169,18 @@ def _tools() -> list[dict[str, Any]]:
             ),
             "inputSchema": {"type": "object", "properties": {"db": _DB}},
         },
+        {
+            "name": "invara_replay",
+            "description": (
+                "Replay a verdict from stored observations and current state. "
+                "Recomputes the verdict to check if it matches what was recorded."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"task_id": {"type": "string"}, "db": _DB},
+                "required": ["task_id"],
+            },
+        },
     ]
 
 
@@ -195,7 +207,12 @@ def _call_judge(args: dict[str, Any]) -> dict[str, Any]:
         recorded = False
         if args.get("commit"):
             store.record_verdict(
-                connection, contract.task_id, verdict, observations, observed_at=_now()
+                connection,
+                contract.task_id,
+                verdict,
+                observations,
+                observed_at=_now(),
+                current=current,
             )
             recorded = True
         return {
@@ -312,12 +329,60 @@ def _call_chain(args: dict[str, Any]) -> dict[str, Any]:
         connection.close()
 
 
+def _call_replay(args: dict[str, Any]) -> dict[str, Any]:
+    """Replay a verdict from stored observations and current state."""
+
+    connection = _db(args)
+    try:
+        contract = store.load_contract(connection, args["task_id"])
+        verdicts = store.history(connection, args["task_id"])
+        if not verdicts:
+            return {"refused": "never_judged", "task_id": args["task_id"]}
+
+        stored = verdicts[-1]
+        observations_data = json.loads(stored["observations_json"])
+        observations = [Observation(**obs) for obs in observations_data["items"]]
+        current = observations_data.get("current")
+
+        if current is None:
+            return {
+                "refused": "no_current_stored",
+                "task_id": args["task_id"],
+                "judged_at": stored["observed_at"],
+                "reason": "this verdict predates replay support",
+            }
+
+        recomputed = judge(contract, current, observations)
+        stored_detail = json.loads(stored["detail_json"])
+
+        matches = (
+            recomputed.status == stored["status"]
+            and recomputed.reason == stored["reason"]
+            and recomputed.decided_by == stored_detail.get("decided_by")
+        )
+
+        return {
+            "task_id": contract.task_id,
+            "intent": contract.intent,
+            "status": recomputed.status,
+            "decided_by": recomputed.decided_by,
+            "reason": recomputed.reason,
+            "matches": matches,
+            "stored_status": stored["status"],
+            "stored_decided_by": stored_detail.get("decided_by"),
+            "stored_reason": stored["reason"],
+        }
+    finally:
+        connection.close()
+
+
 HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {
     "invara_judge": _call_judge,
     "invara_seal": _call_seal,
     "invara_list": _call_list,
     "invara_log": _call_log,
     "invara_chain": _call_chain,
+    "invara_replay": _call_replay,
 }
 
 

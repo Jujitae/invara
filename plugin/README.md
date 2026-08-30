@@ -12,8 +12,8 @@ just called this tool.
 
 ## What it adds
 
-Five tools: `invara_seal`, `invara_judge`, `invara_list`, `invara_log`,
-`invara_chain`.
+Six tools: `invara_seal`, `invara_judge`, `invara_list`, `invara_log`,
+`invara_chain`, `invara_replay`.
 
 The order is the whole guarantee. `invara_seal` takes the digests of the
 protected paths **before** the work, and `invara_judge` compares them after.

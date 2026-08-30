@@ -3,8 +3,10 @@
 Its own entry point, deliberately: a verifier that shares a command with the
 thing it verifies can be broken by the thing it verifies.
 
+    invara init                 generate a task.json template from the repository
     invara seal   <task.json>   seal the contract; refuses if it cannot fail
     invara judge  <task_id>     run the checks and record what happened
+    invara replay <task_id>     replay a verdict from stored observations
     invara list                 sealed tasks and their latest verdict
     invara log    <task_id>     every verdict this task has had
     invara show   <task_id>     the sealed contract, as sealed
@@ -23,7 +25,7 @@ from typing import Any, Sequence
 from . import store
 from .contract import BLOCK, PASS, UNVERIFIABLE, Constraint, NotVerifiable, Predicate, seal
 from .runner import DEFAULT_TIMEOUT_S, digest_paths, observe
-from .verdict import judge
+from .verdict import Observation, judge
 
 #: Exit codes, so a shell or a CI step can act without parsing text.
 EXIT_OK = 0
@@ -149,7 +151,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
         mark = "ok " if observation.ran and observation.exit_code == 0 else "!! "
         if not observation.ran:
             mark = ".. "
-        print(f"  {mark}{observation.predicate_id:<28} {observation.detail[:80]}")
+        print(f"  {mark}{observation.predicate_id:<28} {observation.detail}")
     print()
     print(f"  {verdict.status}: {verdict.reason}")
     print(f"  decided by: {verdict.decided_by}")
@@ -161,6 +163,7 @@ def cmd_judge(args: argparse.Namespace) -> int:
             verdict,
             observations,
             observed_at=_now(),
+            current=current,
         )
         print("  recorded")
     else:
@@ -217,6 +220,141 @@ def cmd_chain(args: argparse.Namespace) -> int:
     return EXIT_OK if result["ok"] else EXIT_BLOCK
 
 
+def cmd_replay(args: argparse.Namespace) -> int:
+    """Replay a verdict from stored observations.
+
+    Recomputes the verdict using the observations and current state that were
+    recorded at the time, and compares it against what was stored. If they
+    match, the judgement is reproducible. If they differ, the verdict logic
+    has changed or the stored data is corrupt.
+    """
+
+    connection = _store(args.db)
+    try:
+        contract = store.load_contract(connection, args.task_id)
+    except KeyError:
+        print(f"no sealed contract for {args.task_id}")
+        return EXIT_REFUSED
+
+    verdicts = store.history(connection, args.task_id)
+    if not verdicts:
+        print(f"{args.task_id} has never been judged")
+        return EXIT_REFUSED
+
+    stored = verdicts[-1]
+    observations_data = json.loads(stored["observations_json"])
+    observations = [Observation(**obs) for obs in observations_data["items"]]
+    current = observations_data.get("current")
+
+    if current is None:
+        print("REFUSED no_current_stored: this verdict predates replay support")
+        print(f"  judged at {_stamp(stored['observed_at'])}")
+        print("  re-judge with --commit to record current state")
+        return EXIT_REFUSED
+
+    recomputed = judge(contract, current, observations)
+    stored_detail = json.loads(stored["detail_json"])
+
+    mismatches = []
+    if recomputed.status != stored["status"]:
+        mismatches.append(f"status: {stored['status']} -> {recomputed.status}")
+    if recomputed.reason != stored["reason"]:
+        mismatches.append(f"reason: {stored['reason']} -> {recomputed.reason}")
+    if recomputed.decided_by != stored_detail.get("decided_by"):
+        mismatches.append(
+            f"decided_by: {stored_detail.get('decided_by')} -> {recomputed.decided_by}"
+        )
+
+    print(f"replaying {contract.task_id}  (judged {_stamp(stored['observed_at'])})")
+    print(f"  {contract.intent}")
+    print()
+    if mismatches:
+        print("MISMATCH verdict changed:")
+        for line in mismatches:
+            print(f"  {line}")
+        print()
+        print(f"  stored:     {stored['status']}: {stored['reason']}")
+        print(f"  recomputed: {recomputed.status}: {recomputed.reason}")
+        return EXIT_BLOCK
+    else:
+        print(f"  {recomputed.status}: {recomputed.reason}")
+        print(f"  decided by: {recomputed.decided_by}")
+        print("  verdict matches stored")
+        return EXIT_OK
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """Generate a minimal task.json that passes seal."""
+    import subprocess
+
+    root = Path(args.root).resolve()
+
+    # Generate task_id from git branch + timestamp
+    try:
+        branch = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        ).stdout.strip()
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        branch = "unknown"
+
+    task_id = f"TASK-{branch}-{int(_now())}"
+
+    # Find common files to protect
+    protected = []
+    for candidate in ["README.md", "LICENSE", "pyproject.toml", "package.json"]:
+        if (root / candidate).exists():
+            protected.append(candidate)
+
+    # If nothing found, protect at least one file so seal doesn't refuse
+    if not protected:
+        # Find any tracked file
+        try:
+            tracked = subprocess.run(
+                ["git", "ls-files"],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=5,
+            ).stdout.strip().split("\n")
+            if tracked and tracked[0]:
+                protected.append(tracked[0])
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            pass
+
+    # Still nothing? Use a placeholder
+    if not protected:
+        protected = [".gitignore"]
+
+    task = {
+        "task_id": task_id,
+        "intent": f"Verify work on {branch}",
+        "constraints": [
+            {
+                "kind": "paths_unchanged",
+                "paths": protected,
+                "reason": "These files define the project and should not change during the work",
+            }
+        ],
+        "done_when": [
+            {
+                "id": "tests_pass",
+                "command": ["echo", "TODO: replace with actual test command"],
+                "expect_exit": 0,
+                "reason": "All tests must pass",
+            }
+        ],
+    }
+
+    print(json.dumps(task, ensure_ascii=False, indent=2))
+    return EXIT_OK
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="invara",
@@ -260,6 +398,15 @@ def build_parser() -> argparse.ArgumentParser:
     chain_p = sub.add_parser("chain", help="rebuild both hash chains")
     common(chain_p)
     chain_p.set_defaults(func=cmd_chain)
+
+    init_p = sub.add_parser("init", help="generate a task.json template")
+    common(init_p)
+    init_p.set_defaults(func=cmd_init)
+
+    replay_p = sub.add_parser("replay", help="replay a verdict from stored observations")
+    common(replay_p)
+    replay_p.add_argument("task_id")
+    replay_p.set_defaults(func=cmd_replay)
 
     return parser
 
