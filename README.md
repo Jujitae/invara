@@ -84,8 +84,8 @@ pip install invara
 ```
 
 The package declares **zero runtime dependencies**, so this pulls only the
-standard library. `pip install invara` reports `Successfully installed
-invara-0.1.1` and `pip list` shows that one line and nothing else.
+standard library. `pip install invara` reports the installed INVARA version,
+and `pip list` shows no additional runtime packages.
 
 From a checkout it is the same program, but install it first — the source
 lives under `src/`, so a bare `python -m invara` in the repository root
@@ -95,6 +95,23 @@ finds nothing to run:
 pip install -e .
 python -m invara list
 ```
+
+### Release-candidate verification before publish
+
+The bundled plugin and the distributable package must expose the same six MCP
+tools. Before a maintainer publishes a new package version, build its wheel and
+run the repository's clean-environment proof. It creates a fresh virtual
+environment, installs only that wheel without using an index, starts the MCP
+server over stdio, verifies the exact tool list, then seals, judges, lists,
+logs, rebuilds the chain, and replays a verdict.
+
+```bash
+python -m pip wheel --no-index --no-deps --no-build-isolation . --wheel-dir .runtime/invara-dist
+python scripts/verify_fresh_install.py --wheel-dir .runtime/invara-dist --plugin-root plugin
+```
+
+This is a release-candidate proof, not a publish command. The CI workflow runs
+it independently on Windows and Ubuntu for every candidate pull request.
 
 ### 1. Write the contract *before* the work
 

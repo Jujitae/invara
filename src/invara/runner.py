@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Iterable, Sequence
 
 from .contract import Predicate, VerificationContract
@@ -122,7 +122,12 @@ def _store_alias_detail(
         return None
     if not command:
         return None
-    program = Path(command[0]).name.lower().removesuffix(".exe")
+    # A unit test on Unix may supply a measured Windows path.  ``Path`` on
+    # Unix treats its backslashes as ordinary characters, so select Windows
+    # path rules from the observed platform rather than the host running the
+    # test.
+    path_type = PureWindowsPath if (platform or os.name) == "nt" else Path
+    program = path_type(command[0]).name.lower().removesuffix(".exe")
     if not program.startswith("python"):
         return None
     chatter = (stdout or "").strip() + (stderr or "").strip()

@@ -2,7 +2,10 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    # A release candidate must prove its wheel before it reaches main.  The
+    # agent namespace is the dedicated candidate lane; main remains covered
+    # after integration.
+    branches: [main, agent/**]
   pull_request:
 
 jobs:
@@ -23,4 +26,20 @@ jobs:
           python-version: "3.12"
       - run: pip install pytest
       - run: pip install -e .
-      - run: pytest -q
+      - run: python -m pytest tests -q
+
+  fresh-package:
+    # This is intentionally separate from the editable-install suite. A
+    # package can have the right source and still ship an older wheel.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip wheel --no-index --no-deps --no-build-isolation . --wheel-dir .runtime/invara-dist
+      - run: python scripts/verify_fresh_install.py --wheel-dir .runtime/invara-dist --plugin-root plugin
