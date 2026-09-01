@@ -1,0 +1,19 @@
+{
+  "task_id": "INV-003-mcp-smoke",
+  "intent": "Verify the bundled MCP surface without changing the README",
+  "constraints": [
+    {
+      "kind": "paths_unchanged",
+      "paths": ["README.md"],
+      "reason": "the smoke contract must leave the documented product surface intact"
+    }
+  ],
+  "done_when": [
+    {
+      "id": "python-runs",
+      "command": ["python", "-c", "import sys; sys.exit(0)"],
+      "expect_exit": 0,
+      "reason": "the configured Windows Python can execute a completion check"
+    }
+  ]
+}
