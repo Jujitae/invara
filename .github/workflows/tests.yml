@@ -41,5 +41,5 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: python -m pip wheel --no-index --no-deps --no-build-isolation . --wheel-dir .runtime/invara-dist
+      - run: python -m pip wheel --no-deps . --wheel-dir .runtime/invara-dist
       - run: python scripts/verify_fresh_install.py --wheel-dir .runtime/invara-dist --plugin-root plugin

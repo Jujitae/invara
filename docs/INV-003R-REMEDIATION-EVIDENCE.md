@@ -29,7 +29,7 @@ tool lists differ.
 
 ```bash
 python -m pytest tests -q
-python -m pip wheel --no-index --no-deps --no-build-isolation . --wheel-dir .runtime/invara-dist
+python -m pip wheel --no-deps . --wheel-dir .runtime/invara-dist
 python scripts/verify_fresh_install.py --wheel-dir .runtime/invara-dist --plugin-root plugin
 ```
 
