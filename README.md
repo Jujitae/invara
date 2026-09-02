@@ -3,33 +3,30 @@
 
 **Engineering invariants for AI-built software.**
 
-> **INVARA upgrades vibe-coded software into verifiable, engineering-grade
-> software.**
-
-You asked an agent to do a piece of work. It says it is done. INVARA decides
-that independently, from exit codes and file bytes, and writes the verdict into
-a hash chain so the answer cannot be quietly revised later.
-
-**The agent's own report is not an input.** There is no field in a contract
-where anything can assert that the work is finished.
+INVARA works with **Claude Code, Codex, and any coding agent that can use a
+shell**. It verifies declared constraints against observable evidence; it does
+not prove software correctness.
 
 ```text
-Founder intent
-    ↓
-Sealed specification and constraints
-    ↓
-Builder agent (Claude Code / Codex / another agent)
-    ↓
-Code, files, database changes, commands, runtime effects
-    ↓
-Independent INVARA verifier
-    ↓
-Observable evidence and provenance
-    ↓
-BLOCK / UNVERIFIABLE / HUMAN_REVIEW / PASS
-    ↓
-Human or policy-controlled authority
+seal before work -> agent does the work -> judge
+                                             |
+                    PASS / BLOCK / UNVERIFIABLE / HUMAN_REVIEW
 ```
+
+Start with the path that matches your environment:
+
+- **Claude Code:** install the bundled editor/plugin experience with
+  `/plugin marketplace add Jujitae/invara`, then `/plugin install invara`.
+- **Codex or another shell-capable agent:** run `uvx invara list`, or install
+  persistently with `pip install invara`.
+- **Tell your agent:** use the copy-paste instructions in
+  [AI Agent Quickstart](docs/AI_AGENT_QUICKSTART.md), then preserve the exact
+  verdict it receives.
+
+The first result is a verdict, not an agent self-report. `PASS` means every
+declared check returned what it promised and protected paths stayed unchanged.
+`BLOCK`, `UNVERIFIABLE`, and `HUMAN_REVIEW` stay exactly that; none is success
+by reinterpretation.
 
 Status: **v0.1 / Alpha.** It is dogfooded daily and has not been sold. It is
 not autonomous authorization and not an enterprise compliance control.
@@ -69,7 +66,7 @@ The narrow claim, which is what the machine actually does:
 
 ---
 
-## Install and first verdict, in five minutes
+## CLI first verdict, in more detail
 
 Nothing to configure. No API key, no service, no account. Python 3.12+ and uv.
 
