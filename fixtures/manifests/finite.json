@@ -1,0 +1,38 @@
+{
+  "schema_version": "invara.assurance.manifest/1",
+  "session_id": "shipping",
+  "title": "Shipping cost over its whole input domain",
+  "source_system": {
+    "id": "before",
+    "kind": "process",
+    "command": ["python", "source.py"],
+    "root": "$SOURCE_ROOT"
+  },
+  "target_system": {
+    "id": "after",
+    "kind": "process",
+    "command": ["python", "target.py"],
+    "root": "$TARGET_ROOT"
+  },
+  "input_domain": {
+    "kind": "finite",
+    "delivery": "stdin_json",
+    "finite": {
+      "parameters": {
+        "zone": {"range": [1, 5]},
+        "weight_class": {"range": [1, 8]},
+        "express": [false, true]
+      }
+    }
+  },
+  "probes": [
+    {"id": "cli", "adapter": "process", "capture": [], "mandatory": true},
+    {"id": "out", "adapter": "json", "source": "stdout", "mandatory": true}
+  ],
+  "policies": [],
+  "claims": [
+    {"id": "domain", "kind": "finite_domain_proof", "mandatory": true}
+  ],
+  "budgets": {"finite_max_members": 1000, "stability_runs": 1},
+  "timeouts": {"run_seconds": 30}
+}

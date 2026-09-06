@@ -27,6 +27,25 @@ PASS           every check returned what it promised
 
 Every verdict also names the rule that decided it, so it can be argued with.
 
+## Commands
+
+Three slash commands, all running the bundled package locally and offline:
+
+- `/invara:doctor` — diagnose why the MCP server will not start.
+- `/invara:repair` — "기능은 그대로 두고 이 프로젝트를 제대로 정리해줘." A
+  governed repair session: INVARA captures and freezes what the program
+  does, the agent repairs one unit at a time in a disposable worktree, and
+  every unit is verified against the frozen behaviour before it can be
+  kept. The agent cannot declare its own unit accepted.
+- `/invara:assure` — an existing BEFORE and AFTER, compared under a declared
+  Equivalence Manifest: corpus comparison, counterexample search with a
+  minimized reproducer, exhaustive proof over a declared finite domain, and
+  a report that leads with plain language (기능 유지 / 성능 유지 / 정리 완료
+  항목 / 되돌린 변경 / 확인하지 못한 영역 / 다음에 사람이 볼 것).
+
+The two assurance commands drive `python -m invara assure` and
+`python -m invara repair`; the six MCP tools above are unchanged.
+
 ## Install
 
 Requires Python 3.12+.
@@ -38,8 +57,10 @@ The plugin is self-contained. Install from the Claude Code plugin marketplace:
 /plugin install invara
 ```
 
-Zero runtime dependencies, by design and permanently — nothing in the verdict
-path is a model, a service, or a network call.
+Zero mandatory runtime dependencies, by design. Nothing in the verdict path
+calls a model, an external service, or an outbound network endpoint. An
+assurance manifest may start a local service for the session; HTTP probes can
+connect only to that service over loopback (`127.0.0.1`).
 
 ## If the server will not start
 

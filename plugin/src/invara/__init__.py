@@ -40,6 +40,8 @@ syntax error here cannot take down an unrelated command in the same install.
 
 from __future__ import annotations
 
+__version__ = "0.2.0"
+
 import sys as _sys
 
 #: The runtime floor is a product decision (ADR-0018): Python 3.12+, nothing

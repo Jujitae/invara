@@ -1,7 +1,7 @@
 {
   "name": "invara",
   "description": "Independent verification that a change kept the constraints it declared. Seal a contract before the work: the paths that must not change, and the commands that must pass. Afterwards INVARA judges from file digests and exit codes and returns BLOCK, UNVERIFIABLE, HUMAN_REVIEW or PASS, naming which rule decided. UNVERIFIABLE means a check could not be run at all, so the work is unverified and NOT accepted. There is no model in the verdict path and no field anywhere for an agent to assert that the work is done - an agent can ask for a verdict here and cannot give one. Zero dependencies; runs on the standard library.",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "author": {
     "name": "MIGARYOS"
   },

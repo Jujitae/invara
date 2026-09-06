@@ -979,12 +979,12 @@ class TheEditorSurface(Sandbox):
         source = (PACKAGE / "mcp.py").read_text(encoding="utf-8")
         self.assertEqual(re.findall(r'"\d+\.\d+\.\d+"', source), [])
 
-    def test_the_version_it_reports_is_the_one_it_was_installed_as(self) -> None:
-        try:
-            installed = importlib.metadata.version("invara")
-        except importlib.metadata.PackageNotFoundError:
-            self.skipTest("no installed distribution here; nothing to compare against")
-        self.assertEqual(mcp.SERVER_INFO["version"], installed)
+    def test_the_version_it_reports_names_the_loaded_source(self) -> None:
+        # Host metadata may belong to an entirely different checkout. The
+        # executing package's source identity is the reference for this surface.
+        from invara import __version__
+
+        self.assertEqual(mcp.SERVER_INFO["version"], __version__)
 
     def test_it_never_speaks_over_its_own_transport(self) -> None:
         """stdout is the protocol. One stray line and the client sees a corpse.

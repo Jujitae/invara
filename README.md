@@ -28,8 +28,30 @@ declared check returned what it promised and protected paths stayed unchanged.
 `BLOCK`, `UNVERIFIABLE`, and `HUMAN_REVIEW` stay exactly that; none is success
 by reinterpretation.
 
-Status: **v0.1 / Alpha.** It is dogfooded daily and has not been sold. It is
+Status: **Alpha.** It is dogfooded daily and has not been sold. It is
 not autonomous authorization and not an enterprise compliance control.
+
+## New in 0.2: transformation assurance, Gen 1
+
+Two local CLI workflows can now check a declared behavior envelope around a
+refactor or migration:
+
+- `invara assure` compares an existing before/after pair under an Equivalence
+  Manifest and can search for a minimized counterexample.
+- `invara repair` governs a repair one unit at a time, keeping a unit only
+  after the declared checks accept it.
+
+Gen 1 measures only the inputs, observations, policies, and claims declared in
+the manifest. A `PASS` is bounded to that envelope; it is not a general proof
+of correctness, security, or bug-free software. The workflows run user-named
+commands with the user's permissions. They make no outbound network call; an
+HTTP probe may connect only to a loopback service that the manifest starts for
+the session.
+
+Start with the [CLI guide](docs/transformation-assurance/CLI.md) and the
+[manifest guide](docs/transformation-assurance/MANIFEST.md). Synthetic examples
+and display reports are under `fixtures/` and
+`docs/transformation-assurance/samples/`.
 
 ---
 
