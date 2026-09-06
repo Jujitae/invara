@@ -1,0 +1,81 @@
+name: publish-mcp-registry
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: publish-mcp-registry-0.2.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish fixed INVARA 0.2.0 descriptor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+    steps:
+      - name: Bind execution to the intended public repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "Jujitae/invara"
+          test "$GITHUB_REF" = "refs/heads/main"
+
+      - name: Download the exact reviewed MCP publisher
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            'https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz' \
+            --output mcp-publisher.tar.gz
+          printf '%s  %s\n' \
+            'a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc' \
+            'mcp-publisher.tar.gz' | sha256sum --check --strict
+          mapfile -t members < <(tar -tzf mcp-publisher.tar.gz | LC_ALL=C sort)
+          test "${members[*]}" = 'LICENSE README.md mcp-publisher'
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+          chmod 0755 mcp-publisher
+
+      - name: Fetch the exact public 0.2.0 descriptor
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+            'https://raw.githubusercontent.com/Jujitae/invara/3fbcd3c6acc9cda1d085a3f3638ca1ddcacaec90/server.json' \
+            --output server.json
+          printf '%s  %s\n' \
+            'bdf5b70533a59ff45da30631ae9e8c13e9e9c429dea471bc00efcb9b76ba67d6' \
+            'server.json' | sha256sum --check --strict
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          server = json.loads(Path("server.json").read_text(encoding="utf-8"))
+          assert server["name"] == "io.github.Jujitae/invara"
+          assert server["repository"] == {
+              "url": "https://github.com/Jujitae/invara",
+              "source": "github",
+          }
+          assert server["version"] == "0.2.0"
+          assert len(server["packages"]) == 1
+          package = server["packages"][0]
+          assert package["registryType"] == "pypi"
+          assert package["registryBaseUrl"] == "https://pypi.org"
+          assert package["identifier"] == "invara"
+          assert package["version"] == "0.2.0"
+          assert package["runtimeHint"] == "uvx"
+          assert package["transport"] == {"type": "stdio"}
+          PY
+
+      - name: Validate the fixed descriptor
+        shell: bash
+        run: ./mcp-publisher validate server.json
+
+      - name: Authenticate to the official registry with GitHub OIDC
+        shell: bash
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish only the fixed descriptor
+        shell: bash
+        run: ./mcp-publisher publish server.json
