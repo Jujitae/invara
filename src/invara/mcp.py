@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import datetime
 import json
+import pathlib
+import re
 import sys
 import traceback
 from pathlib import Path
@@ -68,14 +70,52 @@ def _version() -> str:
     proof that the package was installed -- and if that metadata is stale the
     claim is stale with it. ``0+unknown`` is only for when there is no metadata
     at all, which is not an error and is also not a version.
+
+    Then the bundled plugin ran on a host that also had an older ``invara``
+    installed, and the metadata answered for the host's copy: 0.1.2 for code
+    that was 0.1.3. So metadata is believed only when the distribution owns
+    this very file; a bundle is named by the plugin manifest beside it and a
+    checkout by the ``pyproject.toml`` above it. The number is the identity of
+    the code that is running, never of a neighbour.
     """
 
+    here = pathlib.Path(__file__).resolve()
+    # 1. an installed distribution, believed only when it owns this very file: the host may
+    #    carry another invara (older, newer) whose number is not the number of the code running here
     try:
-        from importlib.metadata import version
+        from importlib.metadata import distributions
 
-        return version("invara")
-    except Exception:  # noqa: BLE001 - a missing distribution is not a failure
+        for dist in distributions():
+            if str(dist.metadata["Name"] or "").lower() != "invara":
+                continue
+            for entry in dist.files or ():
+                if str(entry).replace("\\", "/").endswith("invara/mcp.py"):
+                    try:
+                        owned = pathlib.Path(dist.locate_file(entry)).resolve()
+                    except Exception:  # noqa: BLE001 - an unreadable record entry is not ownership
+                        continue
+                    if owned == here:
+                        return str(dist.version)
+    except Exception:  # noqa: BLE001 - no metadata machinery is not a failure
+        pass
+    # 2. the bundled plugin: <plugin>/src/invara/mcp.py, named by <plugin>/.claude-plugin/plugin.json
+    # 3. a source checkout: <repo>/src/invara/mcp.py, named by <repo>/pyproject.toml
+    try:
+        root = here.parents[2]
+    except IndexError:
         return "0+unknown"
+    manifest = root / ".claude-plugin" / "plugin.json"
+    if manifest.is_file():
+        try:
+            return str(json.loads(manifest.read_text(encoding="utf-8"))["version"])
+        except Exception:  # noqa: BLE001 - a broken manifest names nothing
+            pass
+    pyproject = root / "pyproject.toml"
+    if pyproject.is_file():
+        found = re.search(r'^version\s*=\s*"([^"]+)"', pyproject.read_text(encoding="utf-8"), re.M)
+        if found:
+            return found.group(1)
+    return "0+unknown"
 
 
 SERVER_INFO = {"name": "invara", "version": _version()}

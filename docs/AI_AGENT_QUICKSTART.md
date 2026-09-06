@@ -56,7 +56,7 @@ rename it.
 
 **Install/start path**
 
-Use the public 0.1.3 package through a shell:
+Use the public 0.2.0 package through a shell:
 
 ```bash
 uvx invara list
@@ -97,7 +97,7 @@ and `HUMAN_REVIEW` still needs a person.
 
 **Install/start path**
 
-Install the public 0.1.3 package in the shell the agent can use:
+Install the public 0.2.0 package in the shell the agent can use:
 
 ```bash
 pip install invara

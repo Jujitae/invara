@@ -11,6 +11,8 @@ thing it verifies can be broken by the thing it verifies.
     invara log    <task_id>     every verdict this task has had
     invara show   <task_id>     the sealed contract, as sealed
     invara chain                rebuild both hash chains
+    invara assure ...           transformation assurance over a BEFORE and an AFTER
+    invara repair ...           governed repair session over a git repository
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import store
+from .assurance import cli as assurance_cli
 from .contract import BLOCK, PASS, UNVERIFIABLE, Constraint, NotVerifiable, Predicate, seal
 from .runner import DEFAULT_TIMEOUT_S, digest_paths, observe
 from .verdict import Observation, judge
@@ -407,6 +410,10 @@ def build_parser() -> argparse.ArgumentParser:
     common(replay_p)
     replay_p.add_argument("task_id")
     replay_p.set_defaults(func=cmd_replay)
+
+    # The transformation assurance command groups. Registered from their
+    # own module so the kernel commands above stay exactly what they were.
+    assurance_cli.register(sub)
 
     return parser
 

@@ -2,22 +2,131 @@ name: publish-pypi
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Draft GitHub release containing the sealed distributions
+        required: true
+        default: v0.2.0
+        type: string
+
+concurrency:
+  group: publish-pypi-0.2.0
+  cancel-in-progress: false
 
 jobs:
   publish:
-    name: Build and publish to PyPI
+    name: Verify sealed distributions and publish to PyPI
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - name: Build distributions
+      - name: Download the exact sealed distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          python -m pip install --upgrade build
-          python -m build
+          set -euo pipefail
+          test "$GH_REPO" = "Jujitae/invara"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$RELEASE_TAG" = "v0.2.0"
+
+          main_sha="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
+          tag_sha="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
+          test "$GITHUB_SHA" = "$main_sha"
+          test "$tag_sha" = "$main_sha"
+          test "$(gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json isDraft --jq .isDraft)" = "true"
+
+          mkdir -p pypi-dist
+          gh release download "$RELEASE_TAG" --repo "$GH_REPO" \
+            --pattern "invara-0.2.0-py3-none-any.whl" \
+            --pattern "invara-0.2.0.tar.gz" \
+            --dir pypi-dist
+
+          mapfile -t files < <(find pypi-dist -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          test "${#files[@]}" -eq 2
+          test "${files[0]}" = "invara-0.2.0-py3-none-any.whl"
+          test "${files[1]}" = "invara-0.2.0.tar.gz"
+
+          sha256sum --check <<'SHA256SUMS'
+          2a4d2fb7d3716b66abcac1aec826fa0c2ba696b9633912e8a9e4c9756c5af393  pypi-dist/invara-0.2.0-py3-none-any.whl
+          80f4e4001327157b238e06c7b7a1a82f17ddccf88bb815a0ae8554e5a2d8bc2b  pypi-dist/invara-0.2.0.tar.gz
+          SHA256SUMS
+
+      - name: Validate version, metadata, archive paths, and wheel RECORD
+        run: |
+          python3 - <<'PY'
+          import base64
+          import csv
+          import hashlib
+          import io
+          import tarfile
+          import zipfile
+          from email.parser import BytesParser
+          from email.policy import compat32
+          from pathlib import Path, PurePosixPath
+
+          root = Path("pypi-dist")
+          wheel = root / "invara-0.2.0-py3-none-any.whl"
+          sdist = root / "invara-0.2.0.tar.gz"
+
+          def safe_name(name: str) -> bool:
+              path = PurePosixPath(name)
+              return bool(name) and not path.is_absolute() and ".." not in path.parts and "\\" not in name
+
+          def metadata_ok(raw: bytes, source: str) -> None:
+              metadata = BytesParser(policy=compat32).parsebytes(raw)
+              if metadata.get("Name") != "invara" or metadata.get("Version") != "0.2.0":
+                  raise SystemExit(f"{source}: unexpected Name or Version")
+              mandatory = [value for value in metadata.get_all("Requires-Dist", []) if "extra ==" not in value]
+              if mandatory:
+                  raise SystemExit(f"{source}: mandatory runtime dependencies present")
+
+          with zipfile.ZipFile(wheel) as archive:
+              names = archive.namelist()
+              if len(names) != len(set(names)) or not all(safe_name(name) for name in names):
+                  raise SystemExit("wheel: duplicate or unsafe member name")
+              metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
+              record_names = [name for name in names if name.endswith(".dist-info/RECORD")]
+              if len(metadata_names) != 1 or len(record_names) != 1:
+                  raise SystemExit("wheel: expected exactly one METADATA and one RECORD")
+              metadata_ok(archive.read(metadata_names[0]), "wheel METADATA")
+
+              rows = list(csv.reader(io.StringIO(archive.read(record_names[0]).decode("utf-8"))))
+              if len(rows) != 40 or {row[0] for row in rows} != set(names):
+                  raise SystemExit("wheel: RECORD must index exactly all 40 members")
+              for name, encoded_hash, encoded_size in rows:
+                  if name == record_names[0]:
+                      if encoded_hash or encoded_size:
+                          raise SystemExit("wheel: RECORD self-row must omit hash and size")
+                      continue
+                  algorithm, digest = encoded_hash.split("=", 1)
+                  if algorithm != "sha256":
+                      raise SystemExit(f"wheel: unsupported RECORD hash for {name}")
+                  data = archive.read(name)
+                  actual = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode("ascii")
+                  if actual != digest or len(data) != int(encoded_size):
+                      raise SystemExit(f"wheel: RECORD mismatch for {name}")
+
+          with tarfile.open(sdist, "r:gz") as archive:
+              members = archive.getmembers()
+              names = [member.name for member in members]
+              if len(names) != len(set(names)) or not all(safe_name(name) for name in names):
+                  raise SystemExit("sdist: duplicate or unsafe member name")
+              pkg_info = [member for member in members if member.name == "invara-0.2.0/PKG-INFO"]
+              if len(pkg_info) != 1:
+                  raise SystemExit("sdist: expected exactly one top-level PKG-INFO")
+              extracted = archive.extractfile(pkg_info[0])
+              if extracted is None:
+                  raise SystemExit("sdist: PKG-INFO is not a regular file")
+              metadata_ok(extracted.read(), "sdist PKG-INFO")
+          PY
+
       - name: Publish package distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          packages-dir: pypi-dist/
+          attestations: true
+          print-hash: true

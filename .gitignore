@@ -7,3 +7,4 @@ dist/
 *.egg-info/
 .venv/
 .pytest_cache/
+.invara/

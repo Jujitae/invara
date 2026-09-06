@@ -1,0 +1,48 @@
+{
+  "schema_version": "invara.assurance.manifest/1",
+  "session_id": "shop",
+  "title": "Order intake: keep what it does, fix how it is built",
+  "source_system": {
+    "id": "before",
+    "kind": "process",
+    "command": ["python", "app.py"],
+    "root": "$SOURCE_ROOT"
+  },
+  "target_system": {"same_as_source": true},
+  "input_domain": {
+    "kind": "corpus",
+    "delivery": "stdin_json",
+    "corpus": [
+      {"id": "single", "input": {"customer": {"name": "Kim", "tier": "none"}, "items": [{"sku": "pen", "qty": 1, "price": 2.5}]}},
+      {"id": "nine-gold", "input": {"customer": {"name": "Lee", "tier": "gold"}, "items": [{"sku": "ink", "qty": 9, "price": 4.0}]}},
+      {"id": "bulk-gold", "input": {"customer": {"name": "Park", "tier": "gold"}, "items": [{"sku": "paper", "qty": 20, "price": 3.0}, {"sku": "clip", "qty": 2, "price": 0.5}]}},
+      {"id": "bulk-silver-coupon", "input": {"customer": {"name": "Choi", "tier": "silver"}, "items": [{"sku": "toner", "qty": 12, "price": 30.0}], "coupon": "SAVE5"}},
+      {"id": "coupon-too-small", "input": {"customer": {"name": "Jung", "tier": "none"}, "items": [{"sku": "pen", "qty": 4, "price": 2.5}], "coupon": "SAVE5"}},
+      {"id": "invalid-qty", "input": {"customer": {"name": "Han", "tier": "gold"}, "items": [{"sku": "pen", "qty": 0, "price": 2.5}]}}
+    ]
+  },
+  "probes": [
+    {"id": "cli", "adapter": "process", "capture": ["stderr"], "mandatory": true},
+    {"id": "out", "adapter": "json", "source": "stdout", "mandatory": true},
+    {"id": "files", "adapter": "filesystem", "root": "$WORKSPACE/out", "content": "text", "mandatory": true},
+    {"id": "db", "adapter": "sqlite", "path": "$WORKSPACE/shop.db", "tables": [{"name": "orders", "order": "ordered"}, {"name": "order_lines", "order": "ordered"}], "mandatory": true}
+  ],
+  "policies": [
+    {"id": "order-ids", "kind": "generated_id", "path": "/out/value/order_id", "paths": ["/db/tables/orders/rows/*/order_id", "/files/entries/*/text"], "params": {"pattern": "uuid"}, "reason": "the order id is a fresh UUID on every run; the same id must appear in the summary, the receipt and the database row"},
+    {"id": "row-ids", "kind": "generated_id", "path": "/db/tables/orders/rows/*/id", "paths": ["/db/tables/order_lines/rows/*/order_row_id", "/db/tables/order_lines/rows/*/id"], "params": {"pattern": "int", "group": "rowids"}, "reason": "autoincrement keys; lines must still point at their order"},
+    {"id": "timestamps", "kind": "timestamp", "path": "/out/value/created_at", "paths": ["/db/tables/orders/rows/*/created_at", "/files/entries/*/text"], "reason": "created_at is the wall clock at run time"},
+    {"id": "tags-order", "kind": "unordered_multiset", "path": "/out/value/tags", "reason": "the tag list is sorted by a hash of the fresh order id; the set of tags is behaviour, its order is not"},
+    {"id": "receipt-digest", "kind": "ignore", "path": "/files/entries/*/digest", "reason": "the receipt text is compared in full under the id and timestamp policies; its byte digest necessarily follows the generated id and says nothing more"}
+  ],
+  "claims": [
+    {"id": "corpus", "kind": "corpus_equivalence", "mandatory": true},
+    {"id": "search", "kind": "counterexample_search", "mandatory": true, "params": {"runs": 80, "seconds": 300, "seed": 11}},
+    {"id": "stability", "kind": "baseline_stability", "mandatory": true, "params": {"runs": 2}}
+  ],
+  "budgets": {"stability_runs": 2, "shrink_steps": 80},
+  "timeouts": {"run_seconds": 60},
+  "exclusions": [
+    {"id": "stderr-text", "path": "/cli/stderr", "reason": "diagnostic text: a traceback names files and lines that legitimately change under a refactor; the exit code and stdout are the contract"}
+  ],
+  "human_review": []
+}

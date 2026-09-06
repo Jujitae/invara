@@ -26,6 +26,10 @@ INVARA runs commands you put in a contract, with your permissions. It is
 
 ## What it does not do
 
-No network access. No model calls. No credential reads. No telemetry. The
+No network access beyond loopback: the transformation-assurance subsystem may
+connect to `127.0.0.1` for a local service its manifest explicitly starts,
+refuses any other host before a request is sent, and never listens on behalf
+of INVARA; that is not a sandbox, the service runs with your permissions. No
+model calls. No credential reads. No telemetry. The
 package declares zero runtime dependencies and imports only the standard
 library, so the supply-chain surface is Python itself.

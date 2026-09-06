@@ -34,7 +34,7 @@ different chain. That is the drift that was found.
 from __future__ import annotations
 
 import hashlib
-import json
+from . import exact_json as json
 import sqlite3
 from typing import Any, Callable, Iterable
 
@@ -119,12 +119,15 @@ def append(
     table: str,
     fields: dict[str, Any],
     payload_of: Callable[[dict[str, Any]], dict[str, Any]],
+    *,
+    commit: bool = True,
 ) -> dict[str, Any]:
     """Insert one row, chained. Returns the row as written.
 
     The caller supplies the columns; this adds ``prev_hash`` and
     ``record_hash`` and does the insert, so a new store cannot get the order
-    wrong or forget one.
+    wrong or forget one. With ``commit=False``, the caller owns the transaction
+    and must commit or roll it back; export uses this to stage its event.
     """
 
     row = dict(fields)
@@ -137,7 +140,8 @@ def append(
         f"INSERT INTO {table} ({columns}) VALUES ({placeholders})",  # noqa: S608
         tuple(row.values()),
     )
-    connection.commit()
+    if commit:
+        connection.commit()
     return row
 
 

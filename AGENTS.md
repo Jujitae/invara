@@ -31,7 +31,9 @@ weaken away.
   green; retain fail-closed `UNVERIFIABLE`/`BLOCK` behavior.
 - The buyer is a non-coder: the MCP/stdio entry point and usable first-verdict
   experience are product surfaces, not optional demos.
-- Keep the zero-runtime-dependency and local-only/no-network claims true.
+- Keep the zero-runtime-dependency and local-only/no-outbound-network claims
+  true: the only sockets are the loopback ones the assurance executor opens to
+  a service the manifest itself starts; nothing may call out.
   Contracts run user-named commands with user permissions and can store their
   command strings; never put secrets in a contract.
 - Windows encoding, Store Python aliases, CRLF digest changes, and plugin-copy
