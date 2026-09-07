@@ -6,11 +6,11 @@ on:
       release_tag:
         description: Draft GitHub release containing the sealed distributions
         required: true
-        default: v0.2.0
+        default: v0.2.1
         type: string
 
 concurrency:
-  group: publish-pypi-0.2.0
+  group: publish-pypi-0.2.1
   cancel-in-progress: false
 
 jobs:
@@ -33,10 +33,10 @@ jobs:
           set -euo pipefail
           test "$GH_REPO" = "Jujitae/invara"
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$RELEASE_TAG" = "v0.2.0"
+          test "$RELEASE_TAG" = "v0.2.1"
 
-          release_commit_sha="3fbcd3c6acc9cda1d085a3f3638ca1ddcacaec90"
-          release_tag_object_sha="532758bfc7a764a23dc85c38a171748f8ab65fdb"
+          release_commit_sha="4e2c1730ce23010f70c42fad672f2bfd160c0444"
+          release_tag_object_sha="fdc79570989a04b4d8d6890cba51037dfa86e4f5"
           workflow_path=".github/workflows/publish-pypi.yml"
 
           main_sha="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
@@ -112,18 +112,18 @@ jobs:
 
           mkdir -p pypi-dist
           gh release download "$RELEASE_TAG" --repo "$GH_REPO" \
-            --pattern "invara-0.2.0-py3-none-any.whl" \
-            --pattern "invara-0.2.0.tar.gz" \
+            --pattern "invara-0.2.1-py3-none-any.whl" \
+            --pattern "invara-0.2.1.tar.gz" \
             --dir pypi-dist
 
           mapfile -t files < <(find pypi-dist -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           test "${#files[@]}" -eq 2
-          test "${files[0]}" = "invara-0.2.0-py3-none-any.whl"
-          test "${files[1]}" = "invara-0.2.0.tar.gz"
+          test "${files[0]}" = "invara-0.2.1-py3-none-any.whl"
+          test "${files[1]}" = "invara-0.2.1.tar.gz"
 
           sha256sum --check <<'SHA256SUMS'
-          2a4d2fb7d3716b66abcac1aec826fa0c2ba696b9633912e8a9e4c9756c5af393  pypi-dist/invara-0.2.0-py3-none-any.whl
-          80f4e4001327157b238e06c7b7a1a82f17ddccf88bb815a0ae8554e5a2d8bc2b  pypi-dist/invara-0.2.0.tar.gz
+          cc71b4cb6f587ceb575b9b9def7f74fd448228ba95341969f6b494ac0d09154f  pypi-dist/invara-0.2.1-py3-none-any.whl
+          1f884acca6d2f8cd9d720ca552d168eb36fbe48d3ff21d49a77c2e6d543cfecf  pypi-dist/invara-0.2.1.tar.gz
           SHA256SUMS
 
       - name: Validate version, metadata, archive paths, and wheel RECORD
@@ -140,8 +140,8 @@ jobs:
           from pathlib import Path, PurePosixPath
 
           root = Path("pypi-dist")
-          wheel = root / "invara-0.2.0-py3-none-any.whl"
-          sdist = root / "invara-0.2.0.tar.gz"
+          wheel = root / "invara-0.2.1-py3-none-any.whl"
+          sdist = root / "invara-0.2.1.tar.gz"
 
           def safe_name(name: str) -> bool:
               path = PurePosixPath(name)
@@ -149,7 +149,7 @@ jobs:
 
           def metadata_ok(raw: bytes, source: str) -> None:
               metadata = BytesParser(policy=compat32).parsebytes(raw)
-              if metadata.get("Name") != "invara" or metadata.get("Version") != "0.2.0":
+              if metadata.get("Name") != "invara" or metadata.get("Version") != "0.2.1":
                   raise SystemExit(f"{source}: unexpected Name or Version")
               mandatory = [value for value in metadata.get_all("Requires-Dist", []) if "extra ==" not in value]
               if mandatory:
@@ -186,7 +186,7 @@ jobs:
               names = [member.name for member in members]
               if len(names) != len(set(names)) or not all(safe_name(name) for name in names):
                   raise SystemExit("sdist: duplicate or unsafe member name")
-              pkg_info = [member for member in members if member.name == "invara-0.2.0/PKG-INFO"]
+              pkg_info = [member for member in members if member.name == "invara-0.2.1/PKG-INFO"]
               if len(pkg_info) != 1:
                   raise SystemExit("sdist: expected exactly one top-level PKG-INFO")
               extracted = archive.extractfile(pkg_info[0])
@@ -200,8 +200,8 @@ jobs:
         with:
           name: sealed-pypi-distributions
           path: |
-            pypi-dist/invara-0.2.0-py3-none-any.whl
-            pypi-dist/invara-0.2.0.tar.gz
+            pypi-dist/invara-0.2.1-py3-none-any.whl
+            pypi-dist/invara-0.2.1.tar.gz
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -229,16 +229,16 @@ jobs:
 
           mapfile -t entries < <(find pypi-dist -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)
           test "${#entries[@]}" -eq 2
-          test "${entries[0]}" = "invara-0.2.0-py3-none-any.whl"
-          test "${entries[1]}" = "invara-0.2.0.tar.gz"
-          test -f pypi-dist/invara-0.2.0-py3-none-any.whl
-          test -f pypi-dist/invara-0.2.0.tar.gz
-          test ! -L pypi-dist/invara-0.2.0-py3-none-any.whl
-          test ! -L pypi-dist/invara-0.2.0.tar.gz
+          test "${entries[0]}" = "invara-0.2.1-py3-none-any.whl"
+          test "${entries[1]}" = "invara-0.2.1.tar.gz"
+          test -f pypi-dist/invara-0.2.1-py3-none-any.whl
+          test -f pypi-dist/invara-0.2.1.tar.gz
+          test ! -L pypi-dist/invara-0.2.1-py3-none-any.whl
+          test ! -L pypi-dist/invara-0.2.1.tar.gz
 
           sha256sum --check <<'SHA256SUMS'
-          2a4d2fb7d3716b66abcac1aec826fa0c2ba696b9633912e8a9e4c9756c5af393  pypi-dist/invara-0.2.0-py3-none-any.whl
-          80f4e4001327157b238e06c7b7a1a82f17ddccf88bb815a0ae8554e5a2d8bc2b  pypi-dist/invara-0.2.0.tar.gz
+          cc71b4cb6f587ceb575b9b9def7f74fd448228ba95341969f6b494ac0d09154f  pypi-dist/invara-0.2.1-py3-none-any.whl
+          1f884acca6d2f8cd9d720ca552d168eb36fbe48d3ff21d49a77c2e6d543cfecf  pypi-dist/invara-0.2.1.tar.gz
           SHA256SUMS
 
       - name: Validate version, metadata, archive paths, and wheel RECORD
@@ -255,8 +255,8 @@ jobs:
           from pathlib import Path, PurePosixPath
 
           root = Path("pypi-dist")
-          wheel = root / "invara-0.2.0-py3-none-any.whl"
-          sdist = root / "invara-0.2.0.tar.gz"
+          wheel = root / "invara-0.2.1-py3-none-any.whl"
+          sdist = root / "invara-0.2.1.tar.gz"
 
           def safe_name(name: str) -> bool:
               path = PurePosixPath(name)
@@ -264,7 +264,7 @@ jobs:
 
           def metadata_ok(raw: bytes, source: str) -> None:
               metadata = BytesParser(policy=compat32).parsebytes(raw)
-              if metadata.get("Name") != "invara" or metadata.get("Version") != "0.2.0":
+              if metadata.get("Name") != "invara" or metadata.get("Version") != "0.2.1":
                   raise SystemExit(f"{source}: unexpected Name or Version")
               mandatory = [value for value in metadata.get_all("Requires-Dist", []) if "extra ==" not in value]
               if mandatory:
@@ -301,7 +301,7 @@ jobs:
               names = [member.name for member in members]
               if len(names) != len(set(names)) or not all(safe_name(name) for name in names):
                   raise SystemExit("sdist: duplicate or unsafe member name")
-              pkg_info = [member for member in members if member.name == "invara-0.2.0/PKG-INFO"]
+              pkg_info = [member for member in members if member.name == "invara-0.2.1/PKG-INFO"]
               if len(pkg_info) != 1:
                   raise SystemExit("sdist: expected exactly one top-level PKG-INFO")
               extracted = archive.extractfile(pkg_info[0])
