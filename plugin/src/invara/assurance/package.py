@@ -536,7 +536,7 @@ def _rebuild_report(
         if obs["kind"] == "raw" and obs["run_key"].startswith(prefix) and obs["run_key"].endswith(":1") and obs["record"].get("status") == "observed"
     ]
     scan = next((obs["record"] for obs in observations if obs["kind"] == "sensitivity" and obs["run_key"] == f"sensitivity:{manifest.digest()[:16]}"), None)
-    results = snap.verdict_results()
+    results = report_module.counted_results(snap.verdict_results(), snap.frozen or {}, observations)
     picture = coverage_module.coverage_map(
         manifest,
         results,
@@ -558,6 +558,7 @@ def _rebuild_report(
         uncovered_volatile=uncovered_volatile,
         coverage_map=picture,
         sensitivity=dict(scan) if scan is not None else None,
+        observations=observations,
     )
 
 

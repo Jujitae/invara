@@ -379,6 +379,8 @@ class Workflow:
             detail=result.reason,
             evidence_digests=tuple(addresses),
         )
+        coverage["input_counts"] = report_module.search_input_counts(common, frozen.as_dict(), self.evidence.observations(session_id))
+        common["detail"] = result.reason.replace("candidate(s) compared", "search evaluation(s) compared (including repeated inputs)")
         if result.status == claims.DIVERGED and result.original is not None:
             comparison = found.get(result.original["id"])
             divergences = tuple(dict(d.as_dict(), input_id=result.original["id"]) for d in comparison.divergences) if comparison else ({"path": "?", "input_id": result.original["id"]},)
@@ -751,7 +753,7 @@ class Workflow:
         scan = engine.sensitivity_record(session_id, manifest) or {}
         return coverage_module.coverage_map(
             manifest,
-            self._verdict_results(snap),
+            report_module.counted_results(self._verdict_results(snap), snap.frozen or {}, self.evidence.observations(session_id)),
             raw_records=raw_records,
             uncovered_volatile=uncovered,
             manifest_digest=snap.manifest_digest,
@@ -791,6 +793,7 @@ class Workflow:
             uncovered_volatile=uncovered,
             coverage_map=self.coverage(session_id),
             sensitivity=self.engine.sensitivity_record(session_id, manifest),
+            observations=self.evidence.observations(session_id),
         )
 
     def _store_report(self, session_id: str, data: Mapping[str, Any]) -> str:

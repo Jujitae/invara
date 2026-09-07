@@ -26,7 +26,7 @@ def copy_source(tmp_path, name="site"):
     return site
 
 
-def metadata(site, version="0.2.0"):
+def metadata(site, version="0.2.1"):
     info = site / ("invara-" + version + ".dist-info")
     info.mkdir(parents=True)
     (info / "METADATA").write_text("Metadata-Version: 2.1\nName: invara\nVersion: " + version + "\n")
@@ -39,7 +39,7 @@ def test_source_version_is_not_unrelated_host_metadata(tmp_path):
     host = tmp_path / "host"
     metadata(host, "0.1.2")
     result = probe("from invara.assurance.workflow import _tool_versions; import json; print(json.dumps(_tool_versions()))", [ROOT / "src", host], tmp_path)
-    assert result["invara"] == "0.2.0"
+    assert result["invara"] == "0.2.1"
 
 
 CAPTURE = "from invara.assurance.identity import capture; import json; print(json.dumps(capture()))"
@@ -48,7 +48,7 @@ CAPTURE = "from invara.assurance.identity import capture; import json; print(jso
 @pytest.mark.parametrize("surface", ["src", "plugin/src"])
 def test_clean_source_and_plugin_bind_complete_surface(tmp_path, surface):
     result = probe(CAPTURE, [ROOT / surface], tmp_path)
-    assert result["source_version"] == "0.2.0"
+    assert result["source_version"] == "0.2.1"
     assert result["root"] == str((ROOT / surface / "invara").resolve())
     assert result["manifest"] == sorted(result["manifest"], key=lambda row: row["path"])
     assert {row["path"] for row in result["manifest"]} == {p.relative_to(ROOT / surface / "invara").as_posix() for p in (ROOT / surface / "invara").rglob("*.py")}
@@ -86,7 +86,7 @@ def test_mixed_import_origin_refused(tmp_path):
 @pytest.mark.parametrize("change", ["version", "entrypoint"])
 def test_conflicting_owned_metadata_refused(tmp_path, change):
     site = copy_source(tmp_path)
-    info = metadata(site, "0.1.2" if change == "version" else "0.2.0")
+    info = metadata(site, "0.1.2" if change == "version" else "0.2.1")
     if change == "entrypoint":
         (info / "entry_points.txt").write_text("[console_scripts]\ninvara = other:main\n")
     code = "import json\ntry:\n from invara.assurance.identity import capture\n capture()\nexcept Exception as e:\n print(json.dumps({'refused':str(e)}))\nelse:\n print(json.dumps({'refused':False}))"

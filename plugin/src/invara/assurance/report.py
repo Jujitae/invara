@@ -93,6 +93,93 @@ def _divergence_phrase(divergence: Mapping[str, Any]) -> str:
     return phrase
 
 
+def search_input_counts(
+    result: Mapping[str, Any], frozen: Mapping[str, Any], observations: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Report-only accounting for one claim; identities include input and initial state.
+
+    Main candidate evaluations count once per source/target pair, including
+    unverifiable attempts. Shrink evaluations are separate. Missing evidence
+    is unknown (JSON null), never a guess from corpus size or display IDs.
+    """
+    coverage = result.get("coverage") or {}
+    runs = coverage.get("runs")
+    if type(runs) is not int or runs < 0:
+        runs = None
+    counts = dict(search_executions=runs, distinct_search_inputs=None,
+                  baseline_overlap=None, new_distinct_inputs=None, repeated_executions=None,
+                  identity="exact input and initial_state; display IDs excluded",
+                  scope="main search evaluations of the source/target pair; includes unverifiable attempts; excludes shrink evaluations",
+                  unknown_reason=None)
+    rows = {row["digest"]: row for row in observations
+            if row.get("digest") and content_digest(row.get("record")) == row["digest"]}
+
+    def raw_identity(address: Any) -> str | None:
+        row = rows.get(address, {})
+        value = (row.get("record") or {}).get("input_digest")
+        if row.get("kind") == "raw" and isinstance(value, str) and len(value) == 64 and all(ch in "0123456789abcdef" for ch in value):
+            return value
+        return None
+
+    identities = []
+    main_ids = []
+    for address in result.get("evidence_digests", ()):
+        row = rows.get(address, {})
+        record = row.get("record") or {}
+        input_id = record.get("input_id", "")
+        if row.get("kind") != "comparison":
+            counts["unknown_reason"] = "search comparison evidence is incomplete"
+            return counts
+        if input_id.startswith("shrink-"):
+            continue
+        left, right = raw_identity(record.get("source_raw_digest")), raw_identity(record.get("target_raw_digest"))
+        if left is None or left != right:
+            counts["unknown_reason"] = "search input identity evidence is incomplete or inconsistent"
+            return counts
+        identities.append(left)
+        main_ids.append(input_id)
+    if runs is None or main_ids != [f"search-{i}" for i in range(1, runs + 1)]:
+        counts["unknown_reason"] = "main search execution count does not reconcile with preserved comparisons"
+        return counts
+    distinct = set(identities)
+    counts["distinct_search_inputs"] = len(distinct)
+    counts["repeated_executions"] = runs - len(distinct)
+    addresses = frozen.get("record_digests")
+    if not result.get("baseline_digest") or result.get("baseline_digest") != frozen.get("baseline_digest") or not isinstance(addresses, dict):
+        counts["unknown_reason"] = "the claim's frozen baseline identity evidence is unavailable"
+        return counts
+    inputs = frozen.get("inputs", list(addresses))
+    if (not addresses or not isinstance(frozen.get("manifest_digest"), str)
+            or not all(isinstance(key, str) and isinstance(value, str) for key, value in addresses.items())
+            or not isinstance(inputs, list) or not all(isinstance(value, str) for value in inputs)
+            or sorted(inputs) != sorted(addresses)
+            # The existing frozen baseline binding (engine.baseline_digest_of).
+            or content_digest({"manifest": frozen["manifest_digest"], "records": dict(sorted(addresses.items()))}) != frozen["baseline_digest"]
+            or any((rows.get(address, {}).get("record") or {}).get("input_id") != input_id for input_id, address in addresses.items())):
+        counts["unknown_reason"] = "frozen baseline reference set is incomplete or inconsistent"
+        return counts
+    baseline = [raw_identity(address) for address in addresses.values()]
+    if any(value is None for value in baseline):
+        counts["unknown_reason"] = "frozen baseline input identity evidence is incomplete"
+        return counts
+    counts["baseline_overlap"] = len(distinct & set(baseline))
+    counts["new_distinct_inputs"] = len(distinct - set(baseline))
+    return counts
+
+
+def counted_results(results: Sequence[Mapping[str, Any]], frozen: Mapping[str, Any], observations: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Enrich report projections without changing historical events or verdicts."""
+    out = []
+    for result in results:
+        value = dict(result)
+        if value.get("kind") == "counterexample_search":
+            value["coverage"] = dict(value.get("coverage") or {})
+            value["coverage"]["input_counts"] = search_input_counts(value, frozen, observations)
+            value["detail"] = str(value.get("detail", "")).replace("candidate(s) compared", "search evaluation(s) compared (including repeated inputs)")
+        out.append(value)
+    return out
+
+
 def _behavior(snapshot: Snapshot, verdict: c.FinalVerdict, results: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     ko: list[str] = []
     en: list[str] = []
@@ -106,9 +193,22 @@ def _behavior(snapshot: Snapshot, verdict: c.FinalVerdict, results: Sequence[Map
             ko.append(f"확인한 입력 {members}건에서 비교한 값은 모두 이전과 같았습니다.")
             en.append(f"On all {members} recorded input(s), the behaviour after the change matched the behaviour before it on every compared value.")
         elif kind == "counterexample_search" and status == c.NO_DIVERGENCE_FOUND:
-            runs = coverage.get("runs", coverage.get("compared_runs", 0))
-            ko.append(f"추가로 만들어 본 입력 {runs}건에서도 차이를 찾지 못했습니다. (증명은 아닙니다)")
-            en.append(f"{runs} additional generated input(s) were tried without finding a difference. This is evidence, not a proof.")
+            counts = coverage.get("input_counts") or search_input_counts(result, {}, ())
+            runs, distinct, new = (counts.get(k) for k in ("search_executions", "distinct_search_inputs", "new_distinct_inputs"))
+            ko.append(f"추가 검색을 {runs if runs is not None else '확인 불가(UNKNOWN)'}회 실행했고 차이를 찾지 못했습니다. 실행 횟수에는 같은 입력을 반복한 경우도 포함됩니다. (증명은 아닙니다)")
+            en.append(f"The additional search made {runs if runs is not None else 'UNKNOWN'} execution(s) without finding a difference. Executions include repeated inputs. This is evidence, not a proof.")
+            if distinct is not None:
+                ko.append(f"서로 다른 입력은 {distinct}개이고, 같은 입력을 반복한 실행은 {counts['repeated_executions']}회입니다.")
+                en.append(f"There were {distinct} distinct search input(s) and {counts['repeated_executions']} repeated execution(s).")
+            else:
+                ko.append("서로 다른 입력 수와 반복 실행 수는 보존된 증거로 확인할 수 없습니다 (UNKNOWN).")
+                en.append("Distinct search inputs and repeated executions are UNKNOWN from the preserved evidence.")
+            if new is not None:
+                ko.append(f"그중 기존 기준에 있던 입력은 {counts['baseline_overlap']}개, 기존 기준에 없던 새 입력은 {new}개입니다.")
+                en.append(f"Of those distinct inputs, {counts['baseline_overlap']} were already in the frozen baseline and {new} were new to it.")
+            else:
+                ko.append("기존 기준과 겹치는 입력 수와 새 입력 수는 확인할 수 없습니다 (UNKNOWN).")
+                en.append("Baseline overlap and new distinct inputs are UNKNOWN.")
         elif kind == "finite_domain_proof" and status == c.PROVED_WITHIN_DECLARED_DOMAIN:
             members = coverage.get("members", 0)
             ko.append(f"가능한 입력 전체 {members}건을 모두 확인했고, 모두 같았습니다.")
@@ -426,6 +526,7 @@ def build(
     uncovered_volatile: Sequence[str] | None = None,
     coverage_map: Mapping[str, Any] | None = None,
     sensitivity: Mapping[str, Any] | None = None,
+    observations: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Both layers as one JSON document.
 
@@ -436,6 +537,7 @@ def build(
     """
 
     results = [dict(r) for r in results] if results is not None else snapshot.active_claim_results()
+    results = counted_results(results, snapshot.frozen or {}, observations)
     # volatility is judged under the manifest in force (the workflow passes
     # it); the stored capture only knows the policies of its own time
     capture_now = snapshot.captures[-1] if snapshot.captures else {}
@@ -531,7 +633,7 @@ def build(
         "coverage_map": bounded_map(coverage_map) if coverage_map is not None else None,
         "sensitivity": dict(sensitivity) if sensitivity is not None else None,
         "claims": [dict(r) for r in results],
-        "claim_history": [dict(r) for r in snapshot.claim_results],
+        "claim_history": counted_results(snapshot.claim_results, snapshot.frozen or {}, observations),
         "invalidated_claims": [dict(i) for i in snapshot.invalidated_claims],
         "amendments": [dict(a) for a in snapshot.amendments],
         "post_divergence_amendments": list(snapshot.post_divergence),

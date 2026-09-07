@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: publish-mcp-registry-0.2.0
+  group: publish-mcp-registry-0.2.1
   cancel-in-progress: false
 
 jobs:
   publish:
-    name: Publish fixed INVARA 0.2.0 descriptor
+    name: Publish fixed INVARA 0.2.1 descriptor
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -37,15 +37,15 @@ jobs:
           tar -xzf mcp-publisher.tar.gz mcp-publisher
           chmod 0755 mcp-publisher
 
-      - name: Fetch the exact public 0.2.0 descriptor
+      - name: Fetch the exact public 0.2.1 descriptor
         shell: bash
         run: |
           set -euo pipefail
           curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-            'https://raw.githubusercontent.com/Jujitae/invara/3fbcd3c6acc9cda1d085a3f3638ca1ddcacaec90/server.json' \
+            'https://raw.githubusercontent.com/Jujitae/invara/v0.2.1/server.json' \
             --output server.json
           printf '%s  %s\n' \
-            'bdf5b70533a59ff45da30631ae9e8c13e9e9c429dea471bc00efcb9b76ba67d6' \
+            '30598ab030c8086bfa25c0157e0807250a4f6e6c3a26a64f745469a72c0119b7' \
             'server.json' | sha256sum --check --strict
           python3 - <<'PY'
           import json
@@ -57,13 +57,13 @@ jobs:
               "url": "https://github.com/Jujitae/invara",
               "source": "github",
           }
-          assert server["version"] == "0.2.0"
+          assert server["version"] == "0.2.1"
           assert len(server["packages"]) == 1
           package = server["packages"][0]
           assert package["registryType"] == "pypi"
           assert package["registryBaseUrl"] == "https://pypi.org"
           assert package["identifier"] == "invara"
-          assert package["version"] == "0.2.0"
+          assert package["version"] == "0.2.1"
           assert package["runtimeHint"] == "uvx"
           assert package["transport"] == {"type": "stdio"}
           PY

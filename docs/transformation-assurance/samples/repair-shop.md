@@ -1,5 +1,9 @@
 # 변환 보증 보고서 / Transformation assurance report - shop-repair-sample
 
+> 과거 샘플의 표시 문구를 정정했습니다. 아래 80은 검색 실행 횟수이며 서로 다른 입력 수나 새 입력 수가 아닙니다. 이 문서만으로 두 입력 수는 확인할 수 없습니다 (UNKNOWN). 원래 실행의 버전과 증거 식별자는 그대로이며, 0.2.1로 다시 실행한 결과가 아닙니다.
+>
+> Editorial correction to a historical sample: 80 is the number of search executions, including repeats. Distinct and new input counts are UNKNOWN from this document alone. Original execution versions and evidence identities remain unchanged; this is not a rerun with 0.2.1.
+
 ## 결과 / Verdict
 
 **선언한 범위 안에서 기능이 유지되었습니다** / Behaviour preserved within the declared envelope (`PASS`, decided by `preserved`)
@@ -9,12 +13,12 @@
 ### 전이랑 같아? / Same as before? - yes
 
 - 확인한 입력 6건에서 비교한 값은 모두 이전과 같았습니다.
-- 추가로 만들어 본 입력 80건에서도 차이를 찾지 못했습니다. (증명은 아닙니다)
+- 추가 검색을 80회 실행했고 차이를 찾지 못했습니다. 서로 다른 입력 수와 새 입력 수는 확인할 수 없습니다 (UNKNOWN). (증명은 아닙니다)
 - 성능은 검증하지 않았습니다: 성능 측정 규약(performance_envelope 클레임)이 선언되지 않았습니다.
 - 참고: 비교 실행 6회의 부수적인 실행 시간 합계는 이전 0.760974초, 이후 0.636174초였습니다. 성능 검증이 아닙니다.
 
 - On all 6 recorded input(s), the behaviour after the change matched the behaviour before it on every compared value.
-- 80 additional generated input(s) were tried without finding a difference. This is evidence, not a proof.
+- 80 search execution(s), including repeats, found no difference. Distinct and new input counts are UNKNOWN. This is evidence, not a proof.
 - Performance was NOT VERIFIED: no performance_envelope claim declared a measurement protocol and tolerance.
 - For reference only: incidental wall-clock of the 6 single comparison run(s) was before 0.760974s, after 0.636174s. This is not a performance verification.
 
@@ -65,10 +69,10 @@
 ### 기능 유지 / Behaviour preserved - yes
 
 - 확인한 입력 6건에서 비교한 값은 모두 이전과 같았습니다.
-- 추가로 만들어 본 입력 80건에서도 차이를 찾지 못했습니다. (증명은 아닙니다)
+- 추가 검색을 80회 실행했고 차이를 찾지 못했습니다. 서로 다른 입력 수와 새 입력 수는 확인할 수 없습니다 (UNKNOWN). (증명은 아닙니다)
 
 - On all 6 recorded input(s), the behaviour after the change matched the behaviour before it on every compared value.
-- 80 additional generated input(s) were tried without finding a difference. This is evidence, not a proof.
+- 80 search execution(s), including repeats, found no difference. Distinct and new input counts are UNKNOWN. This is evidence, not a proof.
 
 ### 성능 유지 / Performance - not_verified
 
@@ -228,7 +232,7 @@
 
 - `stability` (baseline_stability, mandatory): **NO_DIVERGENCE_FOUND** - 7 volatile path(s) over 2 run(s), every one covered by an accepted policy
 - `corpus` (corpus_equivalence, mandatory): **PRESERVED_WITHIN_ENVELOPE** - 6 corpus input(s) compared equivalent under the declared policies
-- `search` (counterexample_search, mandatory): **NO_DIVERGENCE_FOUND** - 80 candidate(s) compared without divergence; this is not a proof
+- `search` (counterexample_search, mandatory): **NO_DIVERGENCE_FOUND** - 80 search evaluation(s) compared (including repeated inputs) without divergence; this is not a proof
 
 ### Divergences
 
