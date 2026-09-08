@@ -22,7 +22,7 @@ import types
 from typing import Any
 
 SCHEMA = "invara.verifier.identity/1"
-_REQUIRED = frozenset("__init__ __main__ chain contract exact_json mcp runner store verdict assurance.__init__ assurance.analysis assurance.claims assurance.cli assurance.compare assurance.coverage assurance.engine assurance.evidence assurance.execute assurance.governor assurance.http_boundary assurance.identity assurance.manifest assurance.normalize assurance.package assurance.paths assurance.proof assurance.records assurance.redaction assurance.report assurance.search assurance.sensitivity assurance.session assurance.workflow".split())
+_REQUIRED = frozenset("__init__ __main__ chain contract exact_json intent intent_cli intent_view mcp runner store verdict assurance.__init__ assurance.analysis assurance.claims assurance.cli assurance.compare assurance.coverage assurance.engine assurance.evidence assurance.execute assurance.governor assurance.http_boundary assurance.identity assurance.manifest assurance.normalize assurance.package assurance.paths assurance.proof assurance.records assurance.redaction assurance.report assurance.search assurance.sensitivity assurance.session assurance.workflow".split())
 _ENTRYPOINTS = {"invara": "invara.__main__:main", "invara-mcp": "invara.mcp:main"}
 
 

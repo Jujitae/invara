@@ -54,6 +54,17 @@ rename it.
 
 ## B. Codex
 
+**Local candidate: review the promises before work**
+
+This checkout includes an unpublished `invara intent` workflow. It is not in
+the public 0.2.1 package below. Use the
+[promise confirmation guide](INTENT_PROMISE_QUICKSTART.md) only with a verified
+local candidate installation. Preserve the user's original request, ask them
+to review what will change, what must stay, and what cannot be checked, then
+use their returned confirmation record before sealing. Never create that
+confirmation on the user's behalf. Show per-promise results after actual
+execution; unlinked and human-only items remain unresolved.
+
 **Install/start path**
 
 Use the public 0.2.1 package through a shell:

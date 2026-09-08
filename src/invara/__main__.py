@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import store
+from . import intent_cli
 from .assurance import cli as assurance_cli
 from .contract import BLOCK, PASS, UNVERIFIABLE, Constraint, NotVerifiable, Predicate, seal
 from .runner import DEFAULT_TIMEOUT_S, digest_paths, observe
@@ -414,6 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
     # The transformation assurance command groups. Registered from their
     # own module so the kernel commands above stay exactly what they were.
     assurance_cli.register(sub)
+    intent_cli.register(sub)
 
     return parser
 

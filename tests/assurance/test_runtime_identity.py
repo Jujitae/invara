@@ -52,6 +52,7 @@ def test_clean_source_and_plugin_bind_complete_surface(tmp_path, surface):
     assert result["root"] == str((ROOT / surface / "invara").resolve())
     assert result["manifest"] == sorted(result["manifest"], key=lambda row: row["path"])
     assert {row["path"] for row in result["manifest"]} == {p.relative_to(ROOT / surface / "invara").as_posix() for p in (ROOT / surface / "invara").rglob("*.py")}
+    assert {"intent.py", "intent_cli.py", "intent_view.py"} <= {row["path"] for row in result["manifest"]}
     assert result["git"]["commit"]
     assert result["launcher"]["python"]["sha256"]
 
