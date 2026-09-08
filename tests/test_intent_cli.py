@@ -30,3 +30,16 @@ def test_cli_prepares_review_without_sealing_and_then_records_real_report(projec
     assert (output / "INVARA-RESULT.html").is_file()
     assert main(["intent", "report", str(output), "--root", str(root), "--db", str(db)]) == 0
     assert json.loads(capsys.readouterr().out)["execution_performed"] is False
+
+
+def test_cli_report_can_select_a_recorded_historical_verdict(project, capsys):
+    from test_intent import api, sealed
+    root, output, db, _ = project
+    sealed(project)
+    first = api().judge_review(output, root=root, db=db)
+    (root / 'page.html').write_text('empty', encoding='utf-8')
+    api().judge_review(output, root=root, db=db)
+    assert main(['intent', 'report', str(output), '--root', str(root), '--db', str(db), '--verdict-seq', '1']) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result['raw_verdict'] == first['raw_verdict']
+    assert result['execution_performed'] is False

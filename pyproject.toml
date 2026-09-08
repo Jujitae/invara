@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "invara"
-version = "0.2.1"
+version = "0.3.0"
 description = "Independent verification that a change kept the constraints it declared"
 requires-python = ">=3.12"
 license = "Apache-2.0"

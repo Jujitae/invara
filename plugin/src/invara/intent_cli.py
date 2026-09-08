@@ -24,7 +24,7 @@ def _run(args):
             if args.intent_command == "judge":
                 result = intent.judge_review(Path(args.review), root=root, db=Path(args.db), timeout_s=args.timeout)
             else:
-                result = intent.read_report(Path(args.review), root=root, db=Path(args.db))
+                result = intent.read_report(Path(args.review), root=root, db=Path(args.db), verdict_seq=args.verdict_seq)
             (Path(args.review) / "INVARA-RESULT.html").write_text(render_report(result, language=args.language), encoding="utf-8")
         print(json.dumps(result, ensure_ascii=False, indent=2))
         if args.intent_command in ("prepare", "seal"):
@@ -57,4 +57,6 @@ def register(sub):
             command.add_argument("--language", choices=("ko", "en"), default="ko")
         if name == "judge":
             command.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
+        if name == "report":
+            command.add_argument("--verdict-seq", type=int, help="read this recorded sequence instead of latest")
         command.set_defaults(func=_run)

@@ -426,17 +426,29 @@ def judge_review(output: Path, *, root: Path, db: Path, timeout_s: int = DEFAULT
     return report
 
 
-def read_report(output: Path, *, root: Path, db: Path) -> dict:
-    """Read only real stored observations; never accept a caller's verdict JSON."""
+def read_report(output: Path, *, root: Path, db: Path, verdict_seq: int | None = None) -> dict:
+    """Read a bound stored row, defaulting to latest; never execute checks.
+
+    ``verdict_seq`` selects a database sequence belonging to this task, not a
+    position in its history. Historical selection retains current check-drift
+    warnings and every original binding/replay check.
+    """
+    if verdict_seq is not None and (type(verdict_seq) is not int or verdict_seq <= 0):
+        raise IntentError("verdict_seq must be a positive integer")
     root = _root(root)
     review, receipt, contract, history = _bound(output, root, db)
-    stored = history[-1] if history else None
+    if verdict_seq is None:
+        stored = history[-1] if history else None
+    else:
+        stored = next((row for row in history if row["seq"] == verdict_seq), None)
+        if stored is None:
+            raise IntentError("requested verdict sequence does not belong to this task history")
     current, observations, raw = {}, [], None
     changes = _drift(review["check_snapshot"], _snapshot(root, review["check_files"]))
     if stored:
         binding_path = Path(output) / f"run-{stored['seq']}.json"
         if not binding_path.is_file():
-            raise IntentError("latest verdict has no bound adapter execution")
+            raise IntentError("selected verdict has no bound adapter execution")
         binding = _read(binding_path)
         expected = {"review_id": review["review_id"], "review_digest": review["review_digest"],
                     "root_digest": review["root_digest"], "database": receipt["database"],
@@ -501,11 +513,17 @@ def read_report(output: Path, *, root: Path, db: Path) -> dict:
         "unverifiable": counts["UNVERIFIABLE"], "pending": counts["PENDING"] + counts["PENDING_HUMAN"],
         "unique_predicate_count": len(set(all_predicates)), "unique_protected_path_count": len(set(all_paths)),
         "shared_evidence": len(all_predicates) != len(set(all_predicates)) or len(all_paths) != len(set(all_paths))}
+    coverage.update({"REQUESTED_PROMISES": coverage["total"],
+        "MAPPED_MACHINE_PROMISES": coverage["machine_mapped"], "HUMAN_ONLY_PROMISES": coverage["human"],
+        "UNMAPPED_PROMISES": coverage["unmapped"], "VERIFIED_PROMISES": coverage["met"],
+        "FAILED_PROMISES": coverage["not_met"]})
     intent_status = "CHECKED_CONDITIONS_MET" if counts["MET"] == len(promises) and raw and raw["status"] == "PASS" and not changes else (
         "NOT_MET" if counts["NOT_MET"] or (raw and raw["status"] == "BLOCK") else "INCOMPLETE" if stored else "PENDING")
     return {"schema": "invara.intent-report/1", "task_id": review["task_id"], "review_id": review["review_id"],
         "original_request": review["original_request"], "promises": promises, "suggestions": review["suggestions"],
         "coverage": coverage, "intent_status": intent_status, "raw_verdict": raw,
+        "verdict_seq": stored["seq"] if stored else None,
+        "verdict_record_hash": stored["record_hash"] if stored else None,
         "observed_at": datetime.datetime.fromtimestamp(stored["observed_at"], datetime.UTC).isoformat() if stored else None,
         "historical": True, "execution_performed": False, "current_project_verified": False,
         "check_drift": changes, "root_digest": review["root_digest"], "contract_digest": review["contract_digest"],

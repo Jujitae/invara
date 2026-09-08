@@ -40,7 +40,7 @@ syntax error here cannot take down an unrelated command in the same install.
 
 from __future__ import annotations
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 import sys as _sys
 
