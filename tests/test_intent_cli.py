@@ -16,7 +16,7 @@ def test_cli_prepares_review_without_sealing_and_then_records_real_report(projec
     source.write_text(json.dumps(proposal), encoding="utf-8")
     assert main(["intent", "prepare", str(source), "--root", str(root), "--out", str(output)]) == 0
     prepared = json.loads(capsys.readouterr().out)
-    assert prepared["schema"] == "invara.intent-review/1"
+    assert prepared["schema"] == "invara.intent-review/2"
     assert (output / "REVIEW.html").is_file()
     assert not db.exists()
     confirmation = root.parent / "confirmation.json"

@@ -17,15 +17,13 @@ import sqlite3
 import uuid
 
 from . import store
-from .assurance import identity as verifier_identity
 from .contract import Constraint, Predicate, VerificationContract, seal as core_seal
 from .runner import DEFAULT_TIMEOUT_S, digest_paths, observe
 from .verdict import Observation, judge as core_judge
 
 PROPOSAL_SCHEMA = "invara.intent-proposal/1"
-REVIEW_SCHEMA = "invara.intent-review/2"
-LEGACY_REVIEW_SCHEMA = "invara.intent-review/1"
-CONFIRMATION_SCHEMA = "invara.intent-confirmation/2"
+REVIEW_SCHEMA = "invara.intent-review/1"
+CONFIRMATION_SCHEMA = "invara.intent-confirmation/1"
 POLICY_FILES = ("conftest.py", "pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini",
                 "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock")
 
@@ -244,44 +242,10 @@ def _validate(proposal: dict, root: Path) -> tuple[dict, dict]:
     return spec, snapshot
 
 
-def _capture_verifier() -> dict:
-    try:
-        return verifier_identity.capture(include_git=False)
-    except verifier_identity.IdentityError as exc:
-        raise IntentError(f"cannot bind verifier identity: {exc}") from exc
-
-
-def _require_current_verifier(review: dict) -> dict:
-    if review["schema"] != REVIEW_SCHEMA:
-        raise IntentError("legacy review has no verifier identity; prepare and confirm a new review")
-    try:
-        current = verifier_identity.assert_current(review["verifier_identity"])
-        if current["identity_sha256"] != review["verifier_identity_digest"]:
-            raise verifier_identity.IdentityError("verifier identity snapshot changed")
-        return current
-    except verifier_identity.IdentityError as exc:
-        raise IntentError(f"reviewed verifier identity is not current: {exc}") from exc
-
-
-def _report_verifier_state(review: dict) -> tuple[str, str | None]:
-    if review["schema"] == LEGACY_REVIEW_SCHEMA:
-        return "LEGACY_UNBOUND", "This historical review did not bind verifier identity."
-    try:
-        _require_current_verifier(review)
-        return "CURRENT_MATCH", None
-    except IntentError as exc:
-        return "CURRENT_UNVERIFIED", str(exc)
-
-
 def _confirmation_template(review: dict) -> dict:
-    legacy = review["schema"] == LEGACY_REVIEW_SCHEMA
-    result = {"schema": "invara.intent-confirmation/1" if legacy else CONFIRMATION_SCHEMA,
-        **{k: review[k] for k in (
-            "review_id", "proposal_digest", "contract_digest", "root_digest", "review_digest")},
+    return {"schema": CONFIRMATION_SCHEMA, **{k: review[k] for k in (
+        "review_id", "proposal_digest", "contract_digest", "root_digest", "review_digest")},
         "decision": None, "accepted_promise_ids": [], "reviewed_at": None}
-    if not legacy:
-        result["verifier_identity_digest"] = review["verifier_identity_digest"]
-    return result
 
 
 def prepare(proposal: dict, *, root: Path, output: Path) -> dict:
@@ -297,7 +261,6 @@ def prepare(proposal: dict, *, root: Path, output: Path) -> dict:
         if scope.is_dir() and (target == scope or scope in target.parents):
             raise IntentError("review output cannot be inside guarded check scope")
     original = _contract(spec, root, sealed_at=0)
-    runtime = _capture_verifier()
     review = {"schema": REVIEW_SCHEMA, "review_id": str(uuid.uuid4()),
         "task_id": proposal["task_id"], "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "root": _root_identity(root), "root_digest": _digest(_root_identity(root)),
@@ -305,12 +268,11 @@ def prepare(proposal: dict, *, root: Path, output: Path) -> dict:
         "original_request": proposal["original_request"], "promises": proposal["promises"],
         "suggestions": proposal["suggestions"], "contract": spec, "check_files": proposal["check_files"],
         "check_snapshot": snapshot,
-        "verifier_identity": runtime, "verifier_identity_digest": runtime["identity_sha256"],
         "protected_snapshot": {str(i): c.baseline for i,c in enumerate(original.constraints)},
         "limitations": ["This list is proposed coverage, not proof that the entire request was captured.",
             "Shared checks do not become independent evidence when mapped to several promises.",
             "New paths outside declared check directories are not automatically covered.",
-            "The verifier identity is bound; command runtimes, indirect test dependencies and environment are not fully pinned.",
+            "Indirect test dependencies, installed runtimes and environment are not fully pinned.",
             "A matching local confirmation does not authenticate a human; same-user processes can create files.",
             "Commands run with user permissions; this adapter is not a sandbox."]}
     review["review_digest"] = _digest(review)
@@ -325,18 +287,11 @@ def load_review(output: Path) -> dict:
     target = Path(output).resolve()
     proposal, review = _read(target / "proposal.json"), _read(target / "review.json")
     body = {k:v for k,v in review.items() if k not in ("review_digest", "confirmation_template")}
-    if (review.get("schema") not in (REVIEW_SCHEMA, LEGACY_REVIEW_SCHEMA) or review.get("review_digest") != _digest(body)
+    if (review.get("schema") != REVIEW_SCHEMA or review.get("review_digest") != _digest(body)
             or review.get("proposal_digest") != _digest(proposal)
             or review.get("contract_digest") != _digest(review.get("contract"))
             or review.get("root_digest") != _digest(review.get("root"))):
         raise IntentError("frozen review digest mismatch")
-    if review["schema"] == REVIEW_SCHEMA:
-        runtime = review.get("verifier_identity")
-        problems = verifier_identity.validate(runtime)
-        if problems or review.get("verifier_identity_digest") != runtime.get("identity_sha256"):
-            raise IntentError("frozen verifier identity is missing or invalid")
-    elif "verifier_identity" in review or "verifier_identity_digest" in review:
-        raise IntentError("legacy review cannot claim a verifier identity binding")
     for field in ("original_request", "promises", "suggestions", "check_files", "task_id"):
         if review.get(field) != proposal.get(field):
             raise IntentError(f"frozen proposal mismatch: {field}")
@@ -388,7 +343,6 @@ def seal_review(output: Path, confirmation, *, root: Path, db: Path) -> dict:
     review = load_review(target)
     root = _check_root(review, root)
     submission = _confirm(review, confirmation)
-    _require_current_verifier(review)
     if (target / "sealed.json").exists():
         raise IntentError("review is already sealed")
     if _drift(review["check_snapshot"], _snapshot(root, review["check_files"])):
@@ -402,8 +356,7 @@ def seal_review(output: Path, confirmation, *, root: Path, db: Path) -> dict:
                 raise IntentError("database chain verification failed")
             store.record_contract(connection, contract)
             row = connection.execute("SELECT record_hash FROM contract WHERE task_id=?", (contract.task_id,)).fetchone()
-            receipt = {"schema": "invara.intent-seal/2", "review_id": review["review_id"],
-                "verifier_identity_digest": review["verifier_identity_digest"],
+            receipt = {"schema": "invara.intent-seal/1", "review_id": review["review_id"],
                 "review_digest": review["review_digest"], "contract_digest": review["contract_digest"],
                 "root_digest": review["root_digest"], "database": _database_identity(Path(db)),
                 "sealed_contract": contract.as_dict(), "sealed_contract_digest": _digest(contract.as_dict()),
@@ -424,8 +377,6 @@ def _bound(output: Path, root: Path, db: Path):
     if any(receipt.get(k) != review[k] for k in ("review_id", "review_digest", "contract_digest", "root_digest")):
         raise IntentError("sealed review binding mismatch")
     _confirm(review, receipt.get("confirmation"))
-    if review["schema"] == REVIEW_SCHEMA and receipt.get("verifier_identity_digest") != review["verifier_identity_digest"]:
-        raise IntentError("sealed verifier identity binding mismatch")
     connection = sqlite3.connect(Path(db).resolve().as_uri() + "?mode=ro", uri=True)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA query_only=ON")
@@ -451,12 +402,10 @@ def judge_review(output: Path, *, root: Path, db: Path, timeout_s: int = DEFAULT
     """Execute the exact sealed contract and bind the stored row to this root."""
     root = _root(root)
     review, receipt, contract, history = _bound(output, root, db)
-    _require_current_verifier(review)
     before = _snapshot(root, review["check_files"])
     current, observations = observe(contract, root, timeout_s=timeout_s)
     verdict = core_judge(contract, current, observations)
     after = _snapshot(root, review["check_files"])
-    _require_current_verifier(review)
     with closing(store.connect(db)) as connection:
         if not store.verify(connection)["ok"]:
             raise IntentError("database changed during execution")
@@ -466,8 +415,7 @@ def judge_review(output: Path, *, root: Path, db: Path, timeout_s: int = DEFAULT
         store.record_verdict(connection, contract.task_id, verdict, observations,
                              observed_at=datetime.datetime.now(datetime.UTC).timestamp(), current=current)
         stored = store.history(connection, contract.task_id)[-1]
-    binding = {"schema": "invara.intent-run/2", "review_id": review["review_id"],
-        "verifier_identity_digest": review["verifier_identity_digest"],
+    binding = {"schema": "invara.intent-run/1", "review_id": review["review_id"],
         "review_digest": review["review_digest"], "root_digest": review["root_digest"],
         "database": receipt["database"], "contract_record_hash": receipt["contract_record_hash"],
         "verdict_seq": stored["seq"], "verdict_record_hash": stored["record_hash"],
@@ -506,8 +454,6 @@ def read_report(output: Path, *, root: Path, db: Path, verdict_seq: int | None =
                     "root_digest": review["root_digest"], "database": receipt["database"],
                     "contract_record_hash": receipt["contract_record_hash"],
                     "verdict_seq": stored["seq"], "verdict_record_hash": stored["record_hash"]}
-        if review["schema"] == REVIEW_SCHEMA:
-            expected["verifier_identity_digest"] = review["verifier_identity_digest"]
         if any(binding.get(k) != v for k,v in expected.items()):
             raise IntentError("verdict execution binding mismatch")
         for field in ("check_before", "check_after"):
@@ -573,9 +519,6 @@ def read_report(output: Path, *, root: Path, db: Path, verdict_seq: int | None =
         "FAILED_PROMISES": coverage["not_met"]})
     intent_status = "CHECKED_CONDITIONS_MET" if counts["MET"] == len(promises) and raw and raw["status"] == "PASS" and not changes else (
         "NOT_MET" if counts["NOT_MET"] or (raw and raw["status"] == "BLOCK") else "INCOMPLETE" if stored else "PENDING")
-    runtime_status, runtime_warning = _report_verifier_state(review)
-    if runtime_status != "CURRENT_MATCH" and intent_status == "CHECKED_CONDITIONS_MET":
-        intent_status = "INCOMPLETE"
     return {"schema": "invara.intent-report/1", "task_id": review["task_id"], "review_id": review["review_id"],
         "original_request": review["original_request"], "promises": promises, "suggestions": review["suggestions"],
         "coverage": coverage, "intent_status": intent_status, "raw_verdict": raw,
@@ -583,9 +526,6 @@ def read_report(output: Path, *, root: Path, db: Path, verdict_seq: int | None =
         "verdict_record_hash": stored["record_hash"] if stored else None,
         "observed_at": datetime.datetime.fromtimestamp(stored["observed_at"], datetime.UTC).isoformat() if stored else None,
         "historical": True, "execution_performed": False, "current_project_verified": False,
-        "verifier_identity_status": runtime_status, "verifier_identity_warning": runtime_warning,
-        "verifier_identity_digest": review.get("verifier_identity_digest"),
-        "current_verifier_identity_verified": runtime_status == "CURRENT_MATCH",
         "check_drift": changes, "root_digest": review["root_digest"], "contract_digest": review["contract_digest"],
         "sealed_contract_digest": receipt["sealed_contract_digest"],
         "application_status": "UNKNOWN", "publication_status": "UNKNOWN",
