@@ -2,6 +2,10 @@
 
 Independent verification that a change kept the constraints it declared.
 
+This plugin ships with the public INVARA core 0.3.0 generation. The MCP
+Registry identity is `io.github.Jujitae/invara`; its descriptor and bundled
+source are released together with the core package.
+
 You ask an agent to do a piece of work. It says it is done. INVARA decides that
 independently, from exit codes and file bytes, and writes the verdict into a
 hash chain so the answer cannot be quietly revised later.

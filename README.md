@@ -17,8 +17,9 @@ Start with the path that matches your environment:
 
 - **Claude Code:** install the bundled editor/plugin experience with
   `/plugin marketplace add Jujitae/invara`, then `/plugin install invara`.
-- **Codex or another shell-capable agent:** run `uvx invara list`, or install
-  persistently with `pip install invara`.
+- **Codex or another shell-capable agent:** run
+  `uvx --from invara==0.3.0 invara list`, or install persistently with
+  `python -m pip install invara==0.3.0`.
 - **Tell your agent:** use the copy-paste instructions in
   [AI Agent Quickstart](docs/AI_AGENT_QUICKSTART.md), then preserve the exact
   verdict it receives.
@@ -28,10 +29,11 @@ declared check returned what it promised and protected paths stayed unchanged.
 `BLOCK`, `UNVERIFIABLE`, and `HUMAN_REVIEW` stay exactly that; none is success
 by reinterpretation.
 
-Status: **Alpha.** It is dogfooded daily and has not been sold. It is
-not autonomous authorization and not an enterprise compliance control.
+Current public release: **0.3.0**. Status: **Alpha**. INVARA Free is
+distributed publicly; INVARA Pro is a separate paid product. INVARA is not
+autonomous authorization and not an enterprise compliance control.
 
-## New in 0.2: transformation assurance, Gen 1
+## Transformation assurance in 0.3.0, Gen 1
 
 Two local CLI workflows can now check a declared behavior envelope around a
 refactor or migration:
@@ -93,17 +95,17 @@ The narrow claim, which is what the machine actually does:
 Nothing to configure. No API key, no service, no account. Python 3.12+ and uv.
 
 ```bash
-uvx invara list
+uvx --from invara==0.3.0 invara list
 ```
 
 or, to keep it:
 
 ```bash
-pip install invara
+python -m pip install invara==0.3.0
 ```
 
 The package declares **zero runtime dependencies**, so this pulls only the
-standard library. `pip install invara` reports the installed INVARA version,
+standard library. The pinned install reports the installed INVARA version,
 and `pip list` shows no additional runtime packages.
 
 From a checkout it is the same program, but install it first — the source

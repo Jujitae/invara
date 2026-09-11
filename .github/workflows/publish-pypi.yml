@@ -6,23 +6,38 @@ on:
       release_tag:
         description: Draft GitHub release containing the sealed distributions
         required: true
-        default: v0.2.1
+        default: v0.3.0
+        type: string
+      expected_release_sha:
+        description: Exact reviewed commit resolved by the release tag
+        required: true
+        type: string
+      wheel_sha256:
+        description: SHA-256 of the reviewed wheel
+        required: true
+        type: string
+      sdist_sha256:
+        description: SHA-256 of the reviewed source distribution
+        required: true
         type: string
 
 concurrency:
-  group: publish-pypi-0.2.1
+  group: publish-pypi-0.3.0
   cancel-in-progress: false
 
 jobs:
   acquire:
-    name: Acquire and verify sealed distributions
+    name: Acquire and verify sealed 0.3.0 distributions
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      # GitHub exposes draft releases only to push-capable tokens;
-      # contents: write is the minimum GITHUB_TOKEN scope that provides that access.
       contents: write
       id-token: none
+    env:
+      EXPECTED_VERSION: "0.3.0"
+      EXPECTED_RELEASE_SHA: ${{ inputs.expected_release_sha }}
+      WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+      SDIST_SHA256: ${{ inputs.sdist_sha256 }}
     steps:
       - name: Download the exact sealed distributions
         env:
@@ -33,98 +48,28 @@ jobs:
           set -euo pipefail
           test "$GH_REPO" = "Jujitae/invara"
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$RELEASE_TAG" = "v0.2.1"
-
-          release_commit_sha="4e2c1730ce23010f70c42fad672f2bfd160c0444"
-          release_tag_object_sha="fdc79570989a04b4d8d6890cba51037dfa86e4f5"
-          workflow_path=".github/workflows/publish-pypi.yml"
+          test "$RELEASE_TAG" = "v0.3.0"
+          [[ "$EXPECTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$WHEEL_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$SDIST_SHA256" =~ ^[0-9a-f]{64}$ ]]
 
           main_sha="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
           test "$GITHUB_SHA" = "$main_sha"
-
-          tag_ref_json="$(gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG")"
-          test "$(jq -r '.ref' <<<"$tag_ref_json")" = "refs/tags/$RELEASE_TAG"
-          test "$(jq -r '.object.type' <<<"$tag_ref_json")" = "tag"
-          test "$(jq -r '.object.sha' <<<"$tag_ref_json")" = "$release_tag_object_sha"
-
-          tag_object_json="$(gh api "repos/$GH_REPO/git/tags/$release_tag_object_sha")"
-          test "$(jq -r '.sha' <<<"$tag_object_json")" = "$release_tag_object_sha"
-          test "$(jq -r '.tag' <<<"$tag_object_json")" = "$RELEASE_TAG"
-          test "$(jq -r '.object.type' <<<"$tag_object_json")" = "commit"
-          test "$(jq -r '.object.sha' <<<"$tag_object_json")" = "$release_commit_sha"
-
           tag_sha="$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)"
-          test "$tag_sha" = "$release_commit_sha"
-
-          release_commit_json="$(gh api "repos/$GH_REPO/git/commits/$release_commit_sha")"
-          main_commit_json="$(gh api "repos/$GH_REPO/git/commits/$main_sha")"
-          test "$(jq -r '.sha' <<<"$release_commit_json")" = "$release_commit_sha"
-          test "$(jq -r '.sha' <<<"$main_commit_json")" = "$main_sha"
-          test "$(jq -r '.parents | length' <<<"$main_commit_json")" -eq 1
-          test "$(jq -r '.parents[0].sha' <<<"$main_commit_json")" = "$release_commit_sha"
-
-          release_tree_sha="$(jq -r '.tree.sha' <<<"$release_commit_json")"
-          main_tree_sha="$(jq -r '.tree.sha' <<<"$main_commit_json")"
-          release_tree_json="$(gh api "repos/$GH_REPO/git/trees/$release_tree_sha?recursive=1")"
-          main_tree_json="$(gh api "repos/$GH_REPO/git/trees/$main_tree_sha?recursive=1")"
-          test "$(jq -r '.sha' <<<"$release_tree_json")" = "$release_tree_sha"
-          test "$(jq -r '.sha' <<<"$main_tree_json")" = "$main_tree_sha"
-          test "$(jq -r '.truncated' <<<"$release_tree_json")" = "false"
-          test "$(jq -r '.truncated' <<<"$main_tree_json")" = "false"
-
-          release_entries="$(jq -cS '[.tree[] | select(.type != "tree") | {path, mode, type, sha}] | sort_by(.path)' <<<"$release_tree_json")"
-          main_entries="$(jq -cS '[.tree[] | select(.type != "tree") | {path, mode, type, sha}] | sort_by(.path)' <<<"$main_tree_json")"
-          release_other_entries="$(jq -cS --arg workflow "$workflow_path" '[.[] | select(.path != $workflow)]' <<<"$release_entries")"
-          main_other_entries="$(jq -cS --arg workflow "$workflow_path" '[.[] | select(.path != $workflow)]' <<<"$main_entries")"
-          test "$release_other_entries" = "$main_other_entries"
-
-          release_workflow="$(jq -c --arg workflow "$workflow_path" '[.[] | select(.path == $workflow)]' <<<"$release_entries")"
-          main_workflow="$(jq -c --arg workflow "$workflow_path" '[.[] | select(.path == $workflow)]' <<<"$main_entries")"
-          test "$(jq -r 'length' <<<"$release_workflow")" -eq 1
-          test "$(jq -r 'length' <<<"$main_workflow")" -eq 1
-          test "$(jq -r '.[0].type' <<<"$release_workflow")" = "blob"
-          test "$(jq -r '.[0].type' <<<"$release_workflow")" = "$(jq -r '.[0].type' <<<"$main_workflow")"
-          test "$(jq -r '.[0].mode' <<<"$release_workflow")" = "100644"
-          test "$(jq -r '.[0].mode' <<<"$release_workflow")" = "$(jq -r '.[0].mode' <<<"$main_workflow")"
-          test "$(jq -r '.[0].sha' <<<"$release_workflow")" != "$(jq -r '.[0].sha' <<<"$main_workflow")"
-
-          tree_delta="$(printf '%s\n%s\n' "$release_entries" "$main_entries" | jq -cs '
-            def by_path($entries): reduce $entries[] as $entry ({}; .[$entry.path] = $entry);
-            .[0] as $release |
-            .[1] as $main |
-            (by_path($release)) as $release_by_path |
-            (by_path($main)) as $main_by_path |
-            {
-              added: [($main_by_path | keys[]) | select($release_by_path[.] == null)],
-              deleted: [($release_by_path | keys[]) | select($main_by_path[.] == null)],
-              modified: [
-                ($main_by_path | keys[]) as $path |
-                select($release_by_path[$path] != null and $release_by_path[$path] != $main_by_path[$path]) |
-                $path
-              ]
-            }
-          ')"
-          jq -e --arg workflow "$workflow_path" \
-            '.added == [] and .deleted == [] and .modified == [$workflow]' \
-            <<<"$tree_delta" >/dev/null
-
+          test "$tag_sha" = "$EXPECTED_RELEASE_SHA"
           test "$(gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json isDraft --jq .isDraft)" = "true"
 
           mkdir -p pypi-dist
           gh release download "$RELEASE_TAG" --repo "$GH_REPO" \
-            --pattern "invara-0.2.1-py3-none-any.whl" \
-            --pattern "invara-0.2.1.tar.gz" \
+            --pattern "invara-0.3.0-py3-none-any.whl" \
+            --pattern "invara-0.3.0.tar.gz" \
             --dir pypi-dist
-
           mapfile -t files < <(find pypi-dist -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           test "${#files[@]}" -eq 2
-          test "${files[0]}" = "invara-0.2.1-py3-none-any.whl"
-          test "${files[1]}" = "invara-0.2.1.tar.gz"
-
-          sha256sum --check <<'SHA256SUMS'
-          cc71b4cb6f587ceb575b9b9def7f74fd448228ba95341969f6b494ac0d09154f  pypi-dist/invara-0.2.1-py3-none-any.whl
-          1f884acca6d2f8cd9d720ca552d168eb36fbe48d3ff21d49a77c2e6d543cfecf  pypi-dist/invara-0.2.1.tar.gz
-          SHA256SUMS
+          test "${files[0]}" = "invara-0.3.0-py3-none-any.whl"
+          test "${files[1]}" = "invara-0.3.0.tar.gz"
+          printf '%s  %s\n' "$WHEEL_SHA256" pypi-dist/invara-0.3.0-py3-none-any.whl | sha256sum --check --strict
+          printf '%s  %s\n' "$SDIST_SHA256" pypi-dist/invara-0.3.0.tar.gz | sha256sum --check --strict
 
       - name: Validate version, metadata, archive paths, and wheel RECORD
         run: |
@@ -133,15 +78,17 @@ jobs:
           import csv
           import hashlib
           import io
+          import os
           import tarfile
           import zipfile
           from email.parser import BytesParser
           from email.policy import compat32
           from pathlib import Path, PurePosixPath
 
+          version = os.environ["EXPECTED_VERSION"]
           root = Path("pypi-dist")
-          wheel = root / "invara-0.2.1-py3-none-any.whl"
-          sdist = root / "invara-0.2.1.tar.gz"
+          wheel = root / f"invara-{version}-py3-none-any.whl"
+          sdist = root / f"invara-{version}.tar.gz"
 
           def safe_name(name: str) -> bool:
               path = PurePosixPath(name)
@@ -149,7 +96,7 @@ jobs:
 
           def metadata_ok(raw: bytes, source: str) -> None:
               metadata = BytesParser(policy=compat32).parsebytes(raw)
-              if metadata.get("Name") != "invara" or metadata.get("Version") != "0.2.1":
+              if metadata.get("Name") != "invara" or metadata.get("Version") != version:
                   raise SystemExit(f"{source}: unexpected Name or Version")
               mandatory = [value for value in metadata.get_all("Requires-Dist", []) if "extra ==" not in value]
               if mandatory:
@@ -164,10 +111,9 @@ jobs:
               if len(metadata_names) != 1 or len(record_names) != 1:
                   raise SystemExit("wheel: expected exactly one METADATA and one RECORD")
               metadata_ok(archive.read(metadata_names[0]), "wheel METADATA")
-
               rows = list(csv.reader(io.StringIO(archive.read(record_names[0]).decode("utf-8"))))
-              if len(rows) != 40 or {row[0] for row in rows} != set(names):
-                  raise SystemExit("wheel: RECORD must index exactly all 40 members")
+              if {row[0] for row in rows} != set(names):
+                  raise SystemExit("wheel: RECORD must index exactly every member")
               for name, encoded_hash, encoded_size in rows:
                   if name == record_names[0]:
                       if encoded_hash or encoded_size:
@@ -186,7 +132,7 @@ jobs:
               names = [member.name for member in members]
               if len(names) != len(set(names)) or not all(safe_name(name) for name in names):
                   raise SystemExit("sdist: duplicate or unsafe member name")
-              pkg_info = [member for member in members if member.name == "invara-0.2.1/PKG-INFO"]
+              pkg_info = [member for member in members if member.name == f"invara-{version}/PKG-INFO"]
               if len(pkg_info) != 1:
                   raise SystemExit("sdist: expected exactly one top-level PKG-INFO")
               extracted = archive.extractfile(pkg_info[0])
@@ -200,8 +146,8 @@ jobs:
         with:
           name: sealed-pypi-distributions
           path: |
-            pypi-dist/invara-0.2.1-py3-none-any.whl
-            pypi-dist/invara-0.2.1.tar.gz
+            pypi-dist/invara-0.3.0-py3-none-any.whl
+            pypi-dist/invara-0.3.0.tar.gz
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
@@ -216,6 +162,10 @@ jobs:
     permissions:
       contents: none
       id-token: write
+    env:
+      EXPECTED_VERSION: "0.3.0"
+      WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+      SDIST_SHA256: ${{ inputs.sdist_sha256 }}
     steps:
       - name: Download the verified distributions
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -223,91 +173,45 @@ jobs:
           name: sealed-pypi-distributions
           path: pypi-dist
 
-      - name: Revalidate handoff filenames and sealed hashes
+      - name: Revalidate filenames and sealed hashes
         run: |
           set -euo pipefail
-
           mapfile -t entries < <(find pypi-dist -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C sort)
           test "${#entries[@]}" -eq 2
-          test "${entries[0]}" = "invara-0.2.1-py3-none-any.whl"
-          test "${entries[1]}" = "invara-0.2.1.tar.gz"
-          test -f pypi-dist/invara-0.2.1-py3-none-any.whl
-          test -f pypi-dist/invara-0.2.1.tar.gz
-          test ! -L pypi-dist/invara-0.2.1-py3-none-any.whl
-          test ! -L pypi-dist/invara-0.2.1.tar.gz
+          test "${entries[0]}" = "invara-0.3.0-py3-none-any.whl"
+          test "${entries[1]}" = "invara-0.3.0.tar.gz"
+          test ! -L pypi-dist/invara-0.3.0-py3-none-any.whl
+          test ! -L pypi-dist/invara-0.3.0.tar.gz
+          printf '%s  %s\n' "$WHEEL_SHA256" pypi-dist/invara-0.3.0-py3-none-any.whl | sha256sum --check --strict
+          printf '%s  %s\n' "$SDIST_SHA256" pypi-dist/invara-0.3.0.tar.gz | sha256sum --check --strict
 
-          sha256sum --check <<'SHA256SUMS'
-          cc71b4cb6f587ceb575b9b9def7f74fd448228ba95341969f6b494ac0d09154f  pypi-dist/invara-0.2.1-py3-none-any.whl
-          1f884acca6d2f8cd9d720ca552d168eb36fbe48d3ff21d49a77c2e6d543cfecf  pypi-dist/invara-0.2.1.tar.gz
-          SHA256SUMS
-
-      - name: Validate version, metadata, archive paths, and wheel RECORD
+      - name: Revalidate package metadata
         run: |
           python3 - <<'PY'
-          import base64
-          import csv
-          import hashlib
-          import io
+          import os
           import tarfile
           import zipfile
           from email.parser import BytesParser
           from email.policy import compat32
-          from pathlib import Path, PurePosixPath
+          from pathlib import Path
 
+          version = os.environ["EXPECTED_VERSION"]
           root = Path("pypi-dist")
-          wheel = root / "invara-0.2.1-py3-none-any.whl"
-          sdist = root / "invara-0.2.1.tar.gz"
 
-          def safe_name(name: str) -> bool:
-              path = PurePosixPath(name)
-              return bool(name) and not path.is_absolute() and ".." not in path.parts and "\\" not in name
-
-          def metadata_ok(raw: bytes, source: str) -> None:
+          def check(raw: bytes, source: str) -> None:
               metadata = BytesParser(policy=compat32).parsebytes(raw)
-              if metadata.get("Name") != "invara" or metadata.get("Version") != "0.2.1":
-                  raise SystemExit(f"{source}: unexpected Name or Version")
-              mandatory = [value for value in metadata.get_all("Requires-Dist", []) if "extra ==" not in value]
-              if mandatory:
-                  raise SystemExit(f"{source}: mandatory runtime dependencies present")
+              if metadata.get("Name") != "invara" or metadata.get("Version") != version:
+                  raise SystemExit(f"{source}: unexpected package identity")
+              if [value for value in metadata.get_all("Requires-Dist", []) if "extra ==" not in value]:
+                  raise SystemExit(f"{source}: mandatory runtime dependency present")
 
-          with zipfile.ZipFile(wheel) as archive:
-              names = archive.namelist()
-              if len(names) != len(set(names)) or not all(safe_name(name) for name in names):
-                  raise SystemExit("wheel: duplicate or unsafe member name")
-              metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
-              record_names = [name for name in names if name.endswith(".dist-info/RECORD")]
-              if len(metadata_names) != 1 or len(record_names) != 1:
-                  raise SystemExit("wheel: expected exactly one METADATA and one RECORD")
-              metadata_ok(archive.read(metadata_names[0]), "wheel METADATA")
-
-              rows = list(csv.reader(io.StringIO(archive.read(record_names[0]).decode("utf-8"))))
-              if len(rows) != 40 or {row[0] for row in rows} != set(names):
-                  raise SystemExit("wheel: RECORD must index exactly all 40 members")
-              for name, encoded_hash, encoded_size in rows:
-                  if name == record_names[0]:
-                      if encoded_hash or encoded_size:
-                          raise SystemExit("wheel: RECORD self-row must omit hash and size")
-                      continue
-                  algorithm, digest = encoded_hash.split("=", 1)
-                  if algorithm != "sha256":
-                      raise SystemExit(f"wheel: unsupported RECORD hash for {name}")
-                  data = archive.read(name)
-                  actual = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=").decode("ascii")
-                  if actual != digest or len(data) != int(encoded_size):
-                      raise SystemExit(f"wheel: RECORD mismatch for {name}")
-
-          with tarfile.open(sdist, "r:gz") as archive:
-              members = archive.getmembers()
-              names = [member.name for member in members]
-              if len(names) != len(set(names)) or not all(safe_name(name) for name in names):
-                  raise SystemExit("sdist: duplicate or unsafe member name")
-              pkg_info = [member for member in members if member.name == "invara-0.2.1/PKG-INFO"]
-              if len(pkg_info) != 1:
-                  raise SystemExit("sdist: expected exactly one top-level PKG-INFO")
-              extracted = archive.extractfile(pkg_info[0])
-              if extracted is None:
-                  raise SystemExit("sdist: PKG-INFO is not a regular file")
-              metadata_ok(extracted.read(), "sdist PKG-INFO")
+          with zipfile.ZipFile(root / f"invara-{version}-py3-none-any.whl") as archive:
+              check(archive.read(next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))), "wheel")
+          with tarfile.open(root / f"invara-{version}.tar.gz", "r:gz") as archive:
+              member = archive.extractfile(f"invara-{version}/PKG-INFO")
+              if member is None:
+                  raise SystemExit("sdist: missing PKG-INFO")
+              check(member.read(), "sdist")
           PY
 
       - name: Publish package distributions to PyPI

@@ -5,6 +5,9 @@ shell. Its job is narrow: it verifies declared constraints against observable
 evidence. It does not prove software correctness, and an agent saying that
 work is finished is not completion evidence.
 
+This is the versioned public 0.3.0 quickstart:
+<https://github.com/Jujitae/invara/blob/v0.3.0/docs/AI_AGENT_QUICKSTART.md>
+
 The shared flow is:
 
 ```text
@@ -56,27 +59,26 @@ rename it.
 
 **Local candidate: review the promises before work**
 
-This checkout includes an unpublished `invara intent` workflow. It is not in
-the public 0.2.1 package below. Use the
-[promise confirmation guide](INTENT_PROMISE_QUICKSTART.md) only with a verified
-local candidate installation. Preserve the user's original request, ask them
-to review what will change, what must stay, and what cannot be checked, then
-use their returned confirmation record before sealing. Never create that
-confirmation on the user's behalf. Show per-promise results after actual
-execution; unlinked and human-only items remain unresolved.
+The public 0.3.0 package includes the `invara intent` workflow. Use the
+[promise confirmation guide](INTENT_PROMISE_QUICKSTART.md) with the verified
+public installation. Preserve the user's original request, ask them to review
+what will change, what must stay, and what cannot be checked, then use their
+returned confirmation record before sealing. Never create that confirmation on
+the user's behalf. Show per-promise results after actual execution; unlinked
+and human-only items remain unresolved.
 
 **Install/start path**
 
-Use the public 0.2.1 package through a shell:
+Use the public 0.3.0 package through a shell:
 
 ```bash
-uvx invara list
+uvx --from invara==0.3.0 invara list
 ```
 
 Or install it persistently:
 
 ```bash
-pip install invara
+python -m pip install invara==0.3.0
 invara list
 ```
 
@@ -95,8 +97,8 @@ never use your own claim that the work is finished as evidence.
 
 Define the contract, seal it before work, make the requested changes, and
 judge afterwards. With `uvx`, use the same prefix for each CLI call, for
-example `uvx invara seal <task.json>` and
-`uvx invara judge <task_id> --commit`.
+example `uvx --from invara==0.3.0 invara seal <task.json>` and
+`uvx --from invara==0.3.0 invara judge <task_id> --commit`.
 
 **If the verdict is not PASS**
 
@@ -108,10 +110,10 @@ and `HUMAN_REVIEW` still needs a person.
 
 **Install/start path**
 
-Install the public 0.2.1 package in the shell the agent can use:
+Install the public 0.3.0 package in the shell the agent can use:
 
 ```bash
-pip install invara
+python -m pip install invara==0.3.0
 invara list
 ```
 
